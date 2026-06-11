@@ -16,15 +16,15 @@ The build order below mirrors `SPEC.md` § "Build order".
 |---|------|---------|--------|
 | 1 | Schema + seeds | `db/init.sql`, `scripts/seed_settings.py`, `scripts/seed_brand_voice.py` | ✅ Done & tested |
 | 2 | DB helpers | `utils/db.py` | ✅ Done & tested |
-| 3 | Claude client | `utils/claude.py` | ⬜ Not started |
-| 4 | Strategy Agent | `agents/strategy_agent.py` | ⬜ Not started |
+| 3 | Claude client | `utils/claude.py` | ✅ Done & tested (offline; live call needs a key) |
+| 4 | Strategy Agent | `agents/strategy_agent.py` | ✅ Done & tested (offline; live run needs a key) |
 | 5 | Content Agent | `agents/content_agent.py` | ⬜ Not started |
 | 6 | Review UI | `ui/app.py` | ⬜ Not started |
 | 7 | Distribution Agent | `agents/distribution_agent.py` | ⬜ Not started |
 | 8 | Cron wiring | `cron/weekly_strategy.sh` | ⬜ Not started |
 
-Supporting files still to create (not yet needed): `requirements.txt`, `.env`,
-`README.md`.
+Supporting files: `requirements.txt` ✅ and `.env` ✅ (placeholder, gitignored)
+created in step 3. Still to create: `README.md`.
 
 ---
 
@@ -104,6 +104,122 @@ that sets `db.DB_PATH` to a temp copy before calling the helpers.
 
 ---
 
+## Step 3 — Claude client ✅
+
+**Done:**
+- `utils/claude.py` — the single gateway to the Claude API; agents never call
+  the SDK directly. Highlights:
+  - **Lazy shared client** via `get_client()`: loads `.env` with `python-dotenv`
+    on first use and raises a clear `AgentError` if `ANTHROPIC_API_KEY` is unset
+    or still the placeholder.
+  - **`call_json(...)`** — forced structured output. The installed SDK
+    (`anthropic 0.76.0`) has no `output_config`/`messages.parse`, so this uses
+    **forced tool-use** (`tool_choice` → a single output tool whose `input_schema`
+    is the caller's schema) — the SPEC's "tool-use / forced JSON" path. Reads the
+    tool args back as a dict; defensive `_parse_json_object` (strips ``` fences,
+    falls back to the outer `{...}`) covers the rare string case. **Retries once**
+    with a stricter system instruction on any parse/shape failure, then raises
+    `AgentError`. Surfaces refusals and `max_tokens` truncation as errors. Accepts
+    a string or a list of content blocks (text + image) for the Content Agent.
+  - **`web_search(...)`** — separate, cost-capped call (each search is billable).
+    Server-side `web_search_20260209`, `max_uses` **hard-capped at 3**
+    (`MAX_WEB_SEARCHES`), `tool_choice` auto. Returns
+    `{"text": <synthesis>, "queries": [...]}` and handles `pause_turn`. Strategy
+    feeds the text into `call_json` — it does not loop. Two-phase by design:
+    forced `tool_choice` can't coexist with the model freely choosing to search.
+  - **`image_block(path)`** — base64 image content block, media-type from the
+    extension (png/jpeg/gif/webp), rejects unsupported types.
+  - Model constants: `STRATEGY_MODEL = claude-sonnet-4-6`,
+    `CONTENT_MODEL = DISTRIBUTION_MODEL = claude-haiku-4-5-20251001`.
+  - `AgentError` is the single failure type — on it the caller writes nothing.
+- `requirements.txt` — `anthropic`, `streamlit`, `python-dotenv` (per SPEC).
+- `.env` — placeholder `ANTHROPIC_API_KEY=your_key_here`; **gitignored**
+  (`git check-ignore .env` confirms). **Replace with a real key before any live
+  call** (see TODOs below).
+
+**Verify (offline tests passed on 2026-06-11):** ran a self-contained script
+covering fence stripping, JSON-object parsing (clean / fenced / prose-wrapped /
+non-object rejected), `image_block` (real 1×1 PNG → base64; non-image rejected),
+the placeholder-key guard, and — via a mocked SDK client — `call_json` happy
+path, one-retry-then-succeed, refusal → `AgentError`, total-failure → `AgentError`,
+and `web_search` query/text collection with the `max_uses` cap. No network used.
+
+**Live smoke test (run once `.env` has a real key):**
+```python
+from utils import claude
+print(claude.call_json(
+    model=claude.CONTENT_MODEL,
+    system="You output structured data.",
+    content="Suggest 3 Instagram hashtags for a hand-drawn goose sticker.",
+    schema={"type": "object",
+            "properties": {"hashtags": {"type": "array", "items": {"type": "string"}}},
+            "required": ["hashtags"]},
+))
+r = claude.web_search(prompt="Instagram hashtags for indie sticker artists, June 2026. Summarize briefly.")
+print(r["queries"], "\n", r["text"][:300])
+```
+
+---
+
+## Step 4 — Strategy Agent ✅
+
+**Done:**
+- `agents/strategy_agent.py` — the weekly content-calendar planner. Public entry
+  `run_weekly_plan(week_start=None)` is what both the Monday cron (step 8) and the
+  UI's "Run weekly plan now" button (step 6) call. Flow:
+  - Reads `db.get_recent_posts(30)`, `db.get_settings()`, `db.get_upcoming_markets(45)`,
+    `db.get_active_products()` (least-recently-promoted first).
+  - **Week math:** `week_start` defaults to the Monday of the current week (in
+    `settings.timezone` via `db.today_iso()`); `allowed_dates` = today→Sunday, so the
+    Monday cron gets a full week and a mid-week fallback run only plans remaining days.
+    Raises `AgentError` if the whole target week is already past.
+  - Runs **one** `claude.web_search(...)` (queries capped at 3 in `utils/claude.py`) for
+    seasonal hooks / hashtag freshness. **Degradable:** if the search raises, the run
+    notes it and proceeds on first-party data alone (web is a light supplement, per SPEC).
+  - Builds a **lean context** (SPEC § Output reliability): trimmed recent posts (format,
+    status, cta_type, likes/comments/reach/saves, date) **plus two derivations that make
+    the "first-party leads" + rotation rules concrete** — `format_performance` (per-format
+    avg metrics over posted rows) and `signals` (`days_since_snail_mail_cta`,
+    `recent_cta_sequence`).
+  - Synthesizes via `claude.call_json` on **`claude.STRATEGY_MODEL` (`claude-sonnet-4-6`)**,
+    forced tool `record_plan` with `PLAN_SCHEMA`. System prompt encodes every SPEC rule:
+    first-party-over-web, format mix (reel rule keyed to `reels_required`, ≥1 carousel,
+    a static is fine), CTA rotation / market tease (≤3 wks) / snail-mail (10+ days),
+    product rotation, and **posting time = `default_post_time` with an honest "sensible
+    default, not data-optimized" note in `reasoning`**.
+  - **Schema reality:** `calendar` has no CTA or reasoning column, so CTA intent is woven
+    into each slot's `theme`/`content_idea`, and the run's `reasoning` is **returned to the
+    caller** (printed by the CLI / shown by the UI), not persisted. Slots carry exactly the
+    six writable calendar columns.
+  - `_validate_slots` rejects a bad `format` or an out-of-week `slot_date` with `AgentError`
+    (normalizes `slot_time`→HH:MM with `default_post_time` fallback, odd priority→2). Because
+    `db.replace_week_plan` is atomic, any raise leaves the calendar untouched.
+  - **Idempotent write** via `db.replace_week_plan(week_start, slots)` (deletes the week's
+    `post_id IS NULL` slots, then inserts).
+  - CLI: `python agents/strategy_agent.py [--week-start YYYY-MM-DD]` prints the slots,
+    web queries, and reasoning; `main()` surfaces `AgentError` as a clean exit.
+
+**Verify (offline tests passed on 2026-06-11):** ran a self-contained script against a
+*temp copy* of the DB (real DB confirmed untouched: posts=0, calendar=0) with
+`claude.web_search`/`call_json` monkeypatched — no key/network used. Covered: correct
+`format_performance` (seeded carousels' avg_saves=20.0) and `signals`
+(`days_since_snail_mail_cta=15`, recent shop/shop sequence), market + product-rotation
+ordering in the context, model id = `STRATEGY_MODEL`, all slot dates within
+`allowed_dates`, **idempotent re-run** (3 rows stay 3), **attached-slot survival** (linked
+slot kept with its `post_id`; unattached replaced → 4 rows), and **bad slot_date →
+`AgentError` with the calendar unchanged**. To re-run: copy the script into a scratch file
+that sets `db.DB_PATH` to a temp copy and stubs the two `claude.*` calls.
+
+**Live smoke test (run once `.env` has a real key):**
+```bash
+python agents/strategy_agent.py            # plans the current week
+python agents/strategy_agent.py --week-start 2026-06-15
+```
+First-party data is sparse until real posts exist, so early plans lean on the web
+supplement and sane defaults — that's expected.
+
+---
+
 ## ⚠ Open TODOs to revisit with the artist
 
 These are placeholders/guesses in the seed data — fine for running the system
@@ -139,28 +255,31 @@ After editing either seed script, just re-run it — `INSERT OR REPLACE` overwri
 
 ---
 
-## Next step → Step 3: `utils/claude.py`
+## Next step → Step 5: `agents/content_agent.py`
 
-Per SPEC build order #3 and § "Output reliability": shared Anthropic client,
-web-search wrapper, and **forced-JSON / tool-use** output with defensive parsing
-(strip stray ``` fences) and **one retry** with a stricter instruction before
-giving up. On final failure, write nothing and surface a clear error to the
-caller/UI. Test a basic call and a web-search call.
+Per SPEC build order #5 and § "Agent 2 — Content Agent". Model
+`claude.CONTENT_MODEL` (`claude-haiku-4-5-20251001`). On-demand, per calendar
+slot, **after art is attached** in the UI. Flow:
+- Input: one `calendar` slot (`db.get_calendar_slot`), the attached art file, the
+  `brand_voice` + `settings` rows, the relevant `products` row when `cta_type` is
+  `shop`/`snail_mail`, and recent posted rows' `hashtags` + `reel_script`
+  (`db.get_recent_posted(5)`) for variety only.
+- **Pass the actual art** to the model: `claude.call_json(..., content=[claude.image_block(art_path), {"type": "text", ...}])` so hashtags/hooks reference what's really in the post. `image_block` already validates the media type.
+- Produce: a hashtag set (count within `settings.hashtag_count_min/max`; mix
+  large/medium/niche), a CTA suggestion (+ product + URL), and — reels only — a
+  hook line + outline. **No caption** (`caption` stays null; she writes it).
+- Write a `draft` row via `db.insert_post(...)` (status='draft', format, art_filename,
+  hashtags, cta_type/cta_url/cta_suggestion, product_id, reel_script, agent_reasoning).
+  Then link it to the slot with `db.link_slot_to_post(slot_id, post_id)`.
+- Test with one slot + a real attached image; review hashtags, CTA, reel hook.
 
-Suggested scope:
-- Load `ANTHROPIC_API_KEY` from `.env` (`python-dotenv`); create a shared client.
-- A `call_json(...)` helper that takes a model id, system prompt, messages
-  (incl. optional image blocks for the Content Agent), and a JSON schema → forces
-  a tool/`tool_choice` so the model returns a parseable object; validate, retry
-  once on parse failure, raise on final failure.
-- A `web_search(...)` wrapper around the API's built-in web-search tool, **capped
-  at 2–3 searches** per Strategy run (cost: each search is billable).
-- Model ids: Strategy `claude-sonnet-4-6`; Content & Distribution
-  `claude-haiku-4-5-20251001`.
+**Reminders for later steps:** Distribution (#7) is `call_json` only (no image, no
+search), `claude.DISTRIBUTION_MODEL`; it writes `posting_checklist`,
+`markets.draft_application`, and stamps `products.last_promoted_at` on approval.
+A reusable offline-test recipe (temp DB copy + monkeypatched `claude.*`) is proven
+in the Step 2/3/4 sections — copy it for #5 and #7.
 
-Also still pending before agents run: `requirements.txt` (`anthropic`,
-`streamlit`, `python-dotenv`) and `.env` with the API key (gitignored).
-
-**NOTE:** This task involves the Anthropic/Claude API — consult the `claude-api`
-skill for current model ids, tool-use/forced-JSON, and web-search usage rather
-than relying on memory.
+**NOTE:** Anything touching the Claude API — consult the `claude-api` skill for
+current model ids and usage rather than relying on memory. The installed SDK is
+`anthropic 0.76.0` (tool-use only; no `output_config`), which is why step 3 uses
+forced tool-use — see the Step 3 section above.
