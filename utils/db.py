@@ -299,6 +299,32 @@ def get_calendar_slot(slot_id):
         return _row(conn.execute("SELECT * FROM calendar WHERE id = ?", (slot_id,)).fetchone())
 
 
+def get_calendar_slot_by_post(post_id):
+    """The calendar slot linked to a post, or None — the Distribution Agent owns
+    its slot_time, so it reads (and writes back) the confirmed time here."""
+    with connect() as conn:
+        return _row(conn.execute(
+            "SELECT * FROM calendar WHERE post_id = ? ORDER BY id ASC LIMIT 1",
+            (post_id,),
+        ).fetchone())
+
+
+def get_recent_scheduled_times(limit=5, exclude_post_id=None):
+    """slot_time of the most recent calendar slots that already have a linked
+    post — lets the Distribution Agent avoid scheduling back-to-back identical
+    posting times. The post being scheduled can be excluded from the comparison.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT slot_time FROM calendar "
+            "WHERE post_id IS NOT NULL AND slot_time IS NOT NULL "
+            "AND (:exclude IS NULL OR post_id != :exclude) "
+            "ORDER BY slot_date DESC, slot_time DESC, id DESC LIMIT :limit",
+            {"exclude": exclude_post_id, "limit": limit},
+        ).fetchall()
+    return [r["slot_time"] for r in rows]
+
+
 def update_calendar_slot(slot_id, **fields):
     with connect() as conn:
         _update(conn, "calendar", _CALENDAR_COLUMNS, "id", slot_id, fields)

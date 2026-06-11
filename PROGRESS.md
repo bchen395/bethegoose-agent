@@ -20,7 +20,7 @@ The build order below mirrors `SPEC.md` § "Build order".
 | 4 | Strategy Agent | `agents/strategy_agent.py` | ✅ Done & tested (offline; live run needs a key) |
 | 5 | Content Agent | `agents/content_agent.py` | ✅ Done & tested (offline; live run needs a key) |
 | 6 | Review UI | `ui/app.py` | ✅ Done & tested (headless via AppTest) |
-| 7 | Distribution Agent | `agents/distribution_agent.py` | ⬜ Not started |
+| 7 | Distribution Agent | `agents/distribution_agent.py` | ✅ Done & tested (offline; live run needs a key) |
 | 8 | Cron wiring | `cron/weekly_strategy.sh` | ⬜ Not started |
 
 Supporting files: `requirements.txt` ✅ and `.env` ✅ (placeholder, gitignored)
@@ -391,40 +391,97 @@ After editing either seed script, just re-run it — `INSERT OR REPLACE` overwri
 
 ---
 
-## Next step → Step 7: `agents/distribution_agent.py`
+## Step 7 — Distribution Agent ✅
 
-Per SPEC build order #7 and § "Agent 3 — Distribution Agent". Model
-`claude.DISTRIBUTION_MODEL` (`claude-haiku-4-5-20251001`); `call_json` only — **no
-image, no web search**. **Public entry must be `distribute(post_id)`** — that is the
-contract the UI's Approve button already calls (`ui/app.py` → `_trigger_distribution`),
-which today falls back to setting `status='approved'` itself because the agent is
-absent. What it does (reads the post by id regardless of current status):
-1. **Confirm the final posting time** (it owns `slot_time`): keep Strategy's value
-   unless the last ~5 posts cluster at the same time, then nudge; floor is
-   `settings.default_post_time`. No fake optimization — be honest in the checklist.
-2. Generate a plain-text **posting checklist** → `db.update_post(post_id,
-   posting_checklist=...)` (see SPEC's example format).
-3. If a market's `application_deadline` is within 14 days
-   (`db.get_markets_with_deadline(14)`), draft a blurb →
-   `db.set_market_draft_application(market_id, text)` (**never** touch `notes`).
-4. When `cta_type` is `shop` or `snail_mail` and the post has a `product_id`,
-   **`db.set_product_promoted(product_id)`** (`= now()`) — this is what makes CTA
-   rotation actually work.
-5. Set `status='approved'` last (`db.set_post_status`), so a mid-way API failure
-   leaves the post a draft (the UI surfaces the error and keeps it as a draft).
+**Done:**
+- `agents/distribution_agent.py` — post-approval prep. Public entry
+  `distribute(post_id)` is exactly the contract the UI's Approve button already
+  calls (`ui/app.py` → `_trigger_distribution`); the agent being present now means
+  the UI's `"absent"` fallback no longer fires (no restart needed — the import is
+  attempted at click time). Model `claude.DISTRIBUTION_MODEL`
+  (`claude-haiku-4-5-20251001`); **one `call_json` call, no image, no web search.**
+  Reads the post by id regardless of its current status. Flow:
+  1. **Confirms the posting time (owns `slot_time`).** Reads the post's linked
+     calendar slot via the new `db.get_calendar_slot_by_post(post_id)` for
+     Strategy's proposed time, and the last 5 committed slot times via the new
+     `db.get_recent_scheduled_times(5, exclude_post_id=...)`. `_confirm_time` keeps
+     the planned time, **floored at `settings.default_post_time`**, and nudges it
+     `+15 min` only when ≥2 recent posts already cluster at that exact time (would
+     be 3rd-in-a-row). No fake optimization — the checklist says plainly the time
+     is a sensible default. The confirmed time is **written back to the calendar
+     slot** (`db.update_calendar_slot`) when it changed and a slot exists.
+  2. **Builds the posting checklist DETERMINISTICALLY in Python** (`_build_checklist`
+     + helpers `_to_12h` / `_friendly_date` / `_first_comment_line`). The file name,
+     her caption, and the CTA URL are copied **verbatim** — no model can alter them.
+     It converts the 24h time to 12h, says "today"/"on <date>", tailors the first-
+     comment line (shop/snail-mail/market link vs. hashtags) and the Story line
+     (reel vs. static vs. story), and notes plainly that the time is a default.
+  3. **The agent's ONLY model call is the market blurb** (`_draft_market_blurb`,
+     forced-JSON `record_market_blurb`, blurb-only schema). It runs **only** when a
+     market's `application_deadline` is within 14 days
+     (`db.get_markets_with_deadline(14)`) **and** its `draft_application` is still
+     empty — the **soonest** such market. With no such market the agent makes **no
+     API call at all** (so it needs no key for the common case). Skipping already-
+     drafted markets keeps repeated approvals during a deadline window idempotent.
+  4. Writes `posts.posting_checklist` (`db.update_post`); the blurb →
+     `db.set_market_draft_application` (**never** touches `notes`).
+  5. When `cta_type` is `shop`/`snail_mail` and the post has a `product_id`,
+     `db.set_product_promoted(product_id)` (`= now()`) — drives CTA rotation.
+  6. `db.set_post_status(post_id, "approved")` **last**. The blurb call is the only
+     failure point and precedes every DB write, so a failure (or a missing key when
+     a blurb is needed) leaves the post a draft with nothing half-written. Returns a
+     summary dict (status, confirmed time, whether nudged, checklist, market drafted,
+     product promoted).
+  - CLI: `python agents/distribution_agent.py --post <id>` prints the summary +
+    checklist; `main()` surfaces `claude.AgentError` as a clean exit.
+  - **Refactor note:** an earlier cut had the model generate the whole checklist
+    via one `record_distribution` call. Per the developer's request the checklist
+    is now built in Python (zero risk of the model mangling a URL/filename) and the
+    model is used **only** for the voice-dependent market blurb.
+- `utils/db.py` — added two read-only helpers used only here:
+  `get_calendar_slot_by_post(post_id)` and
+  `get_recent_scheduled_times(limit=5, exclude_post_id=None)`.
 
-Output reliability is unchanged: forced tool-use via `claude.call_json`, defensive
-parse + one retry, **write nothing on final failure** (raise `claude.AgentError`).
-Once built, the UI picks it up with no restart needed (the import is attempted at
-click time). Then do step 8: `cron/weekly_strategy.sh`.
+**Verify (offline tests passed on 2026-06-11):** ran a self-contained script
+against a *temp copy* of the DB (real DB confirmed untouched: posts/calendar/
+products/markets all 0) with `claude.call_json` monkeypatched — no key/network
+used. 33 checks across 5 scenarios: (A) shop CTA + linked slot + near-deadline
+market → **exactly one model call** (the blurb), model id = `DISTRIBUTION_MODEL`,
+blurb-only schema, market name passed; deterministic checklist contains the
+filename / `cta_url` / caption **verbatim** and `6:30 PM` (18:30→12h); status→
+approved, `last_promoted_at` stamped, `draft_application` written **without
+clobbering `notes`**, slot time kept at 18:30 (no cluster); (B) two recent 18:30
+slots → **no model call** (no fresh market), time **nudged to 18:45** and written
+back to the slot; (C) reel + `cta_type='none'` → **no model call**, reel Story
+line + hashtags-first-comment line present, no product promoted, approved;
+(D) blurb `call_json` raises → **post stays draft, no checklist, product not
+re-stamped, the market stays undrafted**; (E) missing post → `AgentError`. To
+re-run: temp DB copy + set `db.DB_PATH` + monkeypatch `claude.call_json`, seed a
+draft post / market / product per the Step 2–5 pattern.
 
-**Reusable offline-test recipe** (proven in Steps 2–5): temp DB copy +
-monkeypatched `claude.call_json`; seed a draft post + a market with a near deadline +
-an active product; assert the checklist/blurb/`last_promoted_at`/status are written
-and that `notes` and other columns are not clobbered. Also assert a `call_json` that
-raises leaves the post a draft and writes nothing.
+**Live smoke test (run once `.env` has a real key):**
+```bash
+# Needs an approved-able draft. Quick path from an existing draft (see step 5):
+sqlite3 data/art_business.db "SELECT id, status, cta_type FROM posts WHERE status='draft';"
+python agents/distribution_agent.py --post <id>
+sqlite3 data/art_business.db "SELECT status, posting_checklist FROM posts WHERE id=<id>;"
+```
+Or just click **Approve** in the UI (caption required) — it calls `distribute()`.
+
+---
+
+## Next step → Step 8: `cron/weekly_strategy.sh`
+
+Per SPEC build order #8. The **last** piece — wire the Monday-morning cron that
+runs the Strategy Agent's weekly plan (the UI's "Run weekly plan now" button
+remains the fallback for when the laptop is asleep). It should `cd` to the project
+root and run `python agents/strategy_agent.py` against the project's Python/venv,
+logging output somewhere useful. Keep it simple; document the `crontab -e` line to
+install it. Nothing else depends on it — all three agents and the UI are done.
+
+Also still to create: `README.md` (see SPEC § File structure).
 
 **NOTE:** Anything touching the Claude API — consult the `claude-api` skill for
 current model ids and usage rather than relying on memory. The installed SDK is
-`anthropic 0.76.0` (tool-use only; no `output_config`), which is why step 3 uses
+`anthropic 0.76.0` (tool-use only; no `output_config`), which is why the agents use
 forced tool-use — see the Step 3 section above.
