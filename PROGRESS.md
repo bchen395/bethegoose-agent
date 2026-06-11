@@ -19,7 +19,7 @@ The build order below mirrors `SPEC.md` § "Build order".
 | 3 | Claude client | `utils/claude.py` | ✅ Done & tested (offline; live call needs a key) |
 | 4 | Strategy Agent | `agents/strategy_agent.py` | ✅ Done & tested (offline; live run needs a key) |
 | 5 | Content Agent | `agents/content_agent.py` | ✅ Done & tested (offline; live run needs a key) |
-| 6 | Review UI | `ui/app.py` | ⬜ Not started |
+| 6 | Review UI | `ui/app.py` | ✅ Done & tested (headless via AppTest) |
 | 7 | Distribution Agent | `agents/distribution_agent.py` | ⬜ Not started |
 | 8 | Cron wiring | `cron/weekly_strategy.sh` | ⬜ Not started |
 
@@ -289,6 +289,73 @@ Review the hashtags (mix of tiers, specific to the image), the CTA suggestion
 
 ---
 
+## Step 6 — Review UI ✅
+
+**Done:**
+- `ui/app.py` — local Streamlit app, three views (sidebar nav) + two always-on
+  banners. All DB access goes through `utils/db.py`; both agent triggers go
+  through the agent entry points; this file touches neither SQLite nor the SDK
+  directly. Highlights:
+  - **Every agent trigger** is wrapped in `st.spinner(...)` + `try/except`
+    (`_run_agent`): `claude.AgentError` (and any unexpected error) surfaces as
+    `st.error` and **nothing half-written is left** — the agents already roll back
+    on failure, so there's no cleanup. No agent call can crash the UI.
+  - **View 1 — Weekly calendar:** week navigation (prev/this/next via a
+    `week_offset` in session state; Monday math mirrors the Strategy Agent).
+    **"Run weekly plan now"** → `strategy_agent.run_weekly_plan(week_start)` for the
+    viewed week (cron fallback); the run's `reasoning` + web queries are shown in an
+    expander. Per slot: date/time, format badge, priority, theme, content idea,
+    linked-post status badge, art thumbnail. **Attach-art** uploader saves into
+    `data/art/` as a slot-prefixed bare filename, **creates+links the draft row if
+    needed** (`_ensure_draft` → `db.insert_post` + `db.link_slot_to_post`), and sets
+    `art_filename` — the row the Content Agent then fills. A per-file
+    name+size signature in session state prevents re-saving the same upload on every
+    rerun. **Generate draft** (disabled until art is attached) →
+    `content_agent.generate_draft(slot_id)`.
+  - **View 2 — Post review:** lists `db.get_posts_by_status("draft")`. Per draft:
+    art preview (image or video), format badge, agent reasoning, promoted-product
+    name, and — for reels — the hook/script. A `st.form` with her **own caption box**,
+    editable **hashtags** (parsed back to a clean de-duped list via `_parse_hashtags`),
+    and editable **CTA** type/url/suggestion. Three submit buttons: **Save draft**
+    (persists edits, stays draft), **Approve** (requires non-empty caption — warns
+    otherwise), **Discard** (`status='discarded'`, soft delete). Switching CTA away
+    from shop/snail_mail clears `product_id` so Distribution won't mis-stamp a product.
+  - **Approve → Distribution, guarded for step 7's absence** (`_trigger_distribution`):
+    tries `from agents import distribution_agent; distribution_agent.distribute(post_id)`.
+    `done` → it set the post approved + wrote the checklist; `absent` (not built yet) →
+    the UI sets `status='approved'` itself and says so; `error` → the post is **kept as
+    a draft** (her saved caption/edits persist) and the error is shown. **This defines
+    the step-7 contract: `distribute(post_id)` reads the post, writes the checklist /
+    market blurb / `last_promoted_at`, and sets `status='approved'` at the end.**
+  - **View 3 — Engagement (core):** "Ready to post" section lists `approved` posts
+    with their `posting_checklist` (or a note that it appears once Distribution runs)
+    and a **"Mark as posted"** button (`db.mark_posted`) — this is the approved→posted
+    bridge the engagement loop needs. "Enter numbers" section: a per-post form over
+    `db.get_posts_missing_engagement()` → `db.update_engagement(...)`.
+  - **Banners (top of every view):** an engagement nudge ("N posted items still need
+    their numbers") from `db.get_posts_missing_engagement()`, and any
+    `db.get_markets_with_deadline(14)` with the agent's `draft_application` in an
+    expander when present.
+
+**Run it (needs deps + a real key for the agent buttons; views render without either):**
+```bash
+python3 -m pip install -r requirements.txt   # adds streamlit (anthropic/dotenv already present)
+streamlit run ui/app.py
+```
+
+**Verify (passed on 2026-06-11):** `python3 -m py_compile ui/app.py`, then a headless
+**AppTest** run (`streamlit.testing.v1.AppTest`) against a *temp copy* of the DB (real
+DB confirmed untouched: posts/calendar/products/markets all 0) seeded with one row per
+view. Covered: all three views render with **no exception**; the market + engagement
+banners fire; the **engagement form submit** writes numbers; and the **Approve path**
+with the Distribution Agent absent flips a draft to `approved` (the documented fallback).
+To re-run: copy the recipe from this section's git history, or set `db.DB_PATH` to a temp
+copy, seed rows via `db.*`, and drive `AppTest.from_file("ui/app.py")` (set the sidebar
+radio to switch views; `.click().run()` form buttons). `streamlit` was installed during
+this step (`1.58.0`).
+
+---
+
 ## ⚠ Open TODOs to revisit with the artist
 
 These are placeholders/guesses in the seed data — fine for running the system
@@ -324,41 +391,38 @@ After editing either seed script, just re-run it — `INSERT OR REPLACE` overwri
 
 ---
 
-## Next step → Step 6: `ui/app.py` (Streamlit, 3 views + banner)
+## Next step → Step 7: `agents/distribution_agent.py`
 
-Per SPEC build order #6 and § "Human review UI". Wrap **every** agent trigger in
-`st.spinner(...)` and `try/except` so a failed API call surfaces an error instead
-of leaving a half-written row (agents already raise `claude.AgentError` and write
-nothing on failure — surface its message). Three views + a banner:
-- **View 1 — Weekly calendar:** show `db.get_calendar_week(week_start)` (date,
-  format badge, theme, content idea, priority, status). Per slot: an **attach-art**
-  file upload that saves into `data/art/` and sets `art_filename` on the slot's
-  linked draft — **create the draft row if needed and `db.link_slot_to_post`** (this
-  is the row the Content Agent then fills in). **Generate draft** button (disabled
-  until art is attached) → `content_agent.generate_draft(slot_id)`. **"Run weekly
-  plan now"** button → `strategy_agent.run_weekly_plan()` (cron fallback).
-- **View 2 — Post review:** list `db.get_posts_by_status("draft")`; show art preview,
-  hashtags, CTA suggestion + URL, agent reasoning, and (if reel) the hook/script.
-  A **caption text box** she writes herself → `db.update_post(id, caption=...)`.
-  Editable hashtag/CTA fields. **Approve** (requires non-empty caption) →
-  `db.set_post_status(id,"approved")` then triggers the Distribution Agent (step 7,
-  not built yet — guard for its absence). **Discard** → `db.set_post_status(id,"discarded")`.
-- **View 3 — Engagement entry (core):** `db.get_posts_missing_engagement()` form →
-  `db.update_engagement(...)`. Persistent banner: "N posted items still need their numbers."
-- **Market banner:** `db.get_markets_with_deadline(14)` + each row's `draft_application`.
+Per SPEC build order #7 and § "Agent 3 — Distribution Agent". Model
+`claude.DISTRIBUTION_MODEL` (`claude-haiku-4-5-20251001`); `call_json` only — **no
+image, no web search**. **Public entry must be `distribute(post_id)`** — that is the
+contract the UI's Approve button already calls (`ui/app.py` → `_trigger_distribution`),
+which today falls back to setting `status='approved'` itself because the agent is
+absent. What it does (reads the post by id regardless of current status):
+1. **Confirm the final posting time** (it owns `slot_time`): keep Strategy's value
+   unless the last ~5 posts cluster at the same time, then nudge; floor is
+   `settings.default_post_time`. No fake optimization — be honest in the checklist.
+2. Generate a plain-text **posting checklist** → `db.update_post(post_id,
+   posting_checklist=...)` (see SPEC's example format).
+3. If a market's `application_deadline` is within 14 days
+   (`db.get_markets_with_deadline(14)`), draft a blurb →
+   `db.set_market_draft_application(market_id, text)` (**never** touch `notes`).
+4. When `cta_type` is `shop` or `snail_mail` and the post has a `product_id`,
+   **`db.set_product_promoted(product_id)`** (`= now()`) — this is what makes CTA
+   rotation actually work.
+5. Set `status='approved'` last (`db.set_post_status`), so a mid-way API failure
+   leaves the post a draft (the UI surfaces the error and keeps it as a draft).
 
-> **Attach-art contract** (matches what the Content Agent expects): the UI owns
-> creating the draft `posts` row and setting `art_filename` on it; `generate_draft`
-> reads the art from the slot's linked post and **upserts** that same row (never
-> duplicates, never clobbers `caption`). Store the **bare filename** in
-> `art_filename` (the agent resolves it under `data/art/`).
+Output reliability is unchanged: forced tool-use via `claude.call_json`, defensive
+parse + one retry, **write nothing on final failure** (raise `claude.AgentError`).
+Once built, the UI picks it up with no restart needed (the import is attempted at
+click time). Then do step 8: `cron/weekly_strategy.sh`.
 
-**Reminders for later steps:** Distribution (#7) is `call_json` only (no image, no
-search), `claude.DISTRIBUTION_MODEL`; it writes `posting_checklist`,
-`markets.draft_application`, and stamps `products.last_promoted_at` on approval.
-The reusable offline-test recipe (temp DB copy + monkeypatched `claude.*`; for an
-image-using agent, a real tiny PNG + monkeypatched `call_json`) is proven in the
-Step 2/3/4/5 sections — copy it for #7.
+**Reusable offline-test recipe** (proven in Steps 2–5): temp DB copy +
+monkeypatched `claude.call_json`; seed a draft post + a market with a near deadline +
+an active product; assert the checklist/blurb/`last_promoted_at`/status are written
+and that `notes` and other columns are not clobbered. Also assert a `call_json` that
+raises leaves the post a draft and writes nothing.
 
 **NOTE:** Anything touching the Claude API — consult the `claude-api` skill for
 current model ids and usage rather than relying on memory. The installed SDK is
