@@ -21,10 +21,10 @@ The build order below mirrors `SPEC.md` § "Build order".
 | 5 | Content Agent | `agents/content_agent.py` | ✅ Done & tested (offline; live run needs a key) |
 | 6 | Review UI | `ui/app.py` | ✅ Done & tested (headless via AppTest) |
 | 7 | Distribution Agent | `agents/distribution_agent.py` | ✅ Done & tested (offline; live run needs a key) |
-| 8 | Cron wiring | `cron/weekly_strategy.sh` | ⬜ Not started |
+| 8 | Cron wiring | `cron/weekly_strategy.sh` | ✅ Done & tested (live run) |
 
-Supporting files: `requirements.txt` ✅ and `.env` ✅ (placeholder, gitignored)
-created in step 3. Still to create: `README.md`.
+Supporting files: `requirements.txt` ✅, `.env` ✅ (gitignored), and `README.md` ✅
+(created with step 8). **All 8 build steps complete.**
 
 ---
 
@@ -470,16 +470,73 @@ Or just click **Approve** in the UI (caption required) — it calls `distribute(
 
 ---
 
-## Next step → Step 8: `cron/weekly_strategy.sh`
+## Step 8 — Cron wiring ✅
 
-Per SPEC build order #8. The **last** piece — wire the Monday-morning cron that
-runs the Strategy Agent's weekly plan (the UI's "Run weekly plan now" button
-remains the fallback for when the laptop is asleep). It should `cd` to the project
-root and run `python agents/strategy_agent.py` against the project's Python/venv,
-logging output somewhere useful. Keep it simple; document the `crontab -e` line to
-install it. Nothing else depends on it — all three agents and the UI are done.
+**Done:**
+- `cron/weekly_strategy.sh` — the Monday-morning cron that runs the Strategy
+  Agent's weekly plan; the UI's "Run weekly plan now" button stays the fallback
+  for when the laptop is asleep at cron time. Design (deliberately robust against
+  cron's bare environment):
+  - **Self-locating:** resolves `PROJECT_ROOT` from `${BASH_SOURCE[0]}` and `cd`s
+    there, so the crontab line is just the absolute path — no `cd` in cron, works
+    from any CWD (verified by running it from `/tmp`).
+  - **Explicit Python choice:** cron has a minimal PATH and no shell profile, so it
+    does NOT trust a bare `python3`. Priority: `ART_AGENT_PYTHON` env override →
+    `.venv/bin/python` → `venv/bin/python` → `command -v python3`; clear error if
+    none found. (There's no venv in this project today, so it lands on the system
+    `python3` that has `anthropic` installed.)
+  - **No key handling needed:** `utils/claude.py` loads `.env` via an absolute path
+    (`parents[1]/.env`), so the key is found regardless of CWD — the script doesn't
+    export it.
+  - **Logging:** appends a timestamped header, the chosen interpreter, the full agent
+    output, and an OK/FAILED footer to `data/logs/weekly_strategy.log`. `data/` is
+    gitignored, so logs never hit version control. Propagates the agent's exit code.
+  - Header comments document the `crontab -e` line (`0 8 * * 1 <abs path>`),
+    `crontab -l` / `tail -f` checks, the `ART_AGENT_PYTHON` override form, and the
+    macOS **Full Disk Access** caveat for `/usr/sbin/cron`.
+  - `set -uo pipefail` (intentionally **not** `-e`, so the run's exit status is
+    captured rather than aborting before the footer logs); guarded `cd`.
 
-Also still to create: `README.md` (see SPEC § File structure).
+**Verify (passed on 2026-06-11):** `bash -n cron/weekly_strategy.sh` (syntax OK),
+`chmod +x` applied. **Live run from `/tmp`** exercised the whole path: it resolved
+the project root, picked the system `python3`, ran the Strategy Agent against the
+real DB, and logged the full plan + web queries + reasoning with a `completed OK`
+footer (exit 0). NOTE: that smoke test was a **live** run — it spent ~2–3 billable
+web searches + one Sonnet call and wrote 4 calendar slots for week 2026-06-08 to
+the real DB (idempotent, so re-runs replace rather than duplicate). `.env` now holds
+a working key (it was a placeholder through step 7).
+
+**Install the cron (run once on her machine):**
+```bash
+crontab -e
+# add — runs Mondays 8:00 AM local:
+0 8 * * 1 /Users/bensonchen/repos/bethegoose-agent/cron/weekly_strategy.sh
+crontab -l                               # confirm
+tail -f data/logs/weekly_strategy.log    # watch runs
+```
+
+---
+
+## README ✅
+
+`README.md` created (SPEC § File structure). Covers: what the system does / doesn't,
+the architecture diagram + agent/model table, project layout, setup (install → key →
+init+seed DB), the daily/weekly workflow, running the UI and each agent's CLI, the
+cron install + macOS caveats, configuration via the seed scripts (with the placeholder
+TODOs flagged), the under-$5/month cost note, and a troubleshooting table. Points
+readers to `SPEC.md` (source of truth) and this file for the build log.
+
+---
+
+## ✅ Build complete — all 8 steps done
+
+All three agents, the UI, the schema/seeds, the cron, and the README are in place and
+tested. What remains is operational, not build work:
+- **Confirm the placeholder seed values with the artist** (snail-mail pitch, avoid
+  phrases, default post time — see "Open TODOs" above), then re-run the seed scripts.
+- **Install the cron** on her machine (command above).
+- The live smoke tests for steps 3–7 in each section can now actually be run, since
+  `.env` has a real key.
 
 **NOTE:** Anything touching the Claude API — consult the `claude-api` skill for
 current model ids and usage rather than relying on memory. The installed SDK is
