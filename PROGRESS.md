@@ -15,7 +15,7 @@ The build order below mirrors `SPEC.md` § "Build order".
 | # | Step | File(s) | Status |
 |---|------|---------|--------|
 | 1 | Schema + seeds | `db/init.sql`, `scripts/seed_settings.py`, `scripts/seed_brand_voice.py` | ✅ Done & tested |
-| 2 | DB helpers | `utils/db.py` | ⬜ Not started |
+| 2 | DB helpers | `utils/db.py` | ✅ Done & tested |
 | 3 | Claude client | `utils/claude.py` | ⬜ Not started |
 | 4 | Strategy Agent | `agents/strategy_agent.py` | ⬜ Not started |
 | 5 | Content Agent | `agents/content_agent.py` | ⬜ Not started |
@@ -66,6 +66,44 @@ sqlite3 data/art_business.db \
 
 ---
 
+## Step 2 — DB helpers ✅
+
+**Done:**
+- `utils/db.py` — the single gateway every agent and the UI use; nothing else
+  touches SQLite directly. Highlights:
+  - `connect()` context manager: opens `data/art_business.db`, sets
+    `PRAGMA foreign_keys = ON` and `row_factory = sqlite3.Row`, **commits on clean
+    exit / rolls back on exception** (so multi-statement writes are atomic).
+  - **JSON columns** (`hashtags`, `example_captions`, `avoid_phrases`) are encoded
+    on write and decoded to Python lists on read — callers pass/receive lists,
+    never raw JSON. Null/empty decodes to `[]`.
+  - **Time helpers** `now_iso()` / `today_iso()` are tz-aware in
+    `settings.timezone` (via `zoneinfo`, degrades to naive local if unavailable).
+    Timestamps stored ISO-8601 to the second.
+  - Dynamic writes are guarded by per-table column allow-lists — an unknown column
+    (typo) raises `ValueError` instead of silently no-op'ing.
+  - Reads: `get_settings`, `get_brand_voice`, `get_recent_posts(30)` (Strategy),
+    `get_recent_posted(5)` (Content variety), `get_posts_by_status`, `get_post`,
+    `get_posts_missing_engagement` (banner), `get_active_products` (ordered
+    `last_promoted_at ASC`, NULL-first), `get_upcoming_markets(45)`,
+    `get_markets_with_deadline(14)`, `get_calendar_week`, plus by-id getters.
+  - Writes: `insert_post`/`update_post`, `set_post_status`, `mark_posted`,
+    `update_engagement`, idempotent `replace_week_plan` (deletes this week's
+    `post_id IS NULL` slots, then inserts), `link_slot_to_post`,
+    `set_product_promoted`, `set_market_draft_application`, and
+    `insert_product`/`insert_market` for sync/seed.
+
+**Verify (all passed on 2026-06-11):** ran a self-contained round-trip test
+against a *temp copy* of the DB (real DB untouched — confirmed all data tables
+still empty, both seed rows intact). Covered: JSON-array round-trip, tz-aware
+timestamps, product rotation ordering, post draft→approved→posted→engagement
+lifecycle, **calendar idempotency** (attached slot preserved, unattached replaced,
+no duplicates), market date windows, `draft_application` not clobbering `notes`,
+and unknown-column `ValueError`. To re-run, copy the test into a scratch script
+that sets `db.DB_PATH` to a temp copy before calling the helpers.
+
+---
+
 ## ⚠ Open TODOs to revisit with the artist
 
 These are placeholders/guesses in the seed data — fine for running the system
@@ -101,19 +139,28 @@ After editing either seed script, just re-run it — `INSERT OR REPLACE` overwri
 
 ---
 
-## Next step → Step 2: `utils/db.py`
+## Next step → Step 3: `utils/claude.py`
 
-Per SPEC build order #2: typed read/write helpers per table, with JSON-array handling
-for `hashtags` / `example_captions` / `avoid_phrases`. Test with manual inserts.
+Per SPEC build order #3 and § "Output reliability": shared Anthropic client,
+web-search wrapper, and **forced-JSON / tool-use** output with defensive parsing
+(strip stray ``` fences) and **one retry** with a stricter instruction before
+giving up. On final failure, write nothing and surface a clear error to the
+caller/UI. Test a basic call and a web-search call.
 
 Suggested scope:
-- Connection helper that opens `data/art_business.db` and sets `PRAGMA foreign_keys = ON`
-  (and `row_factory = sqlite3.Row` for dict-like access).
-- Read helpers the agents need: `get_settings()`, `get_brand_voice()`,
-  recent posts (last 30 for Strategy, last ~5 for Content), active products sorted by
-  `last_promoted_at ASC`, upcoming markets, calendar slots for a week.
-- Write helpers: insert/update a draft post, idempotent calendar week write
-  (delete `week_start` rows where `post_id IS NULL`, then insert), set
-  `products.last_promoted_at`, engagement updates, etc.
-- JSON encode/decode handled inside these helpers so callers pass/receive Python lists.
-- **Test:** manual inserts + reads round-trip correctly, especially JSON arrays.
+- Load `ANTHROPIC_API_KEY` from `.env` (`python-dotenv`); create a shared client.
+- A `call_json(...)` helper that takes a model id, system prompt, messages
+  (incl. optional image blocks for the Content Agent), and a JSON schema → forces
+  a tool/`tool_choice` so the model returns a parseable object; validate, retry
+  once on parse failure, raise on final failure.
+- A `web_search(...)` wrapper around the API's built-in web-search tool, **capped
+  at 2–3 searches** per Strategy run (cost: each search is billable).
+- Model ids: Strategy `claude-sonnet-4-6`; Content & Distribution
+  `claude-haiku-4-5-20251001`.
+
+Also still pending before agents run: `requirements.txt` (`anthropic`,
+`streamlit`, `python-dotenv`) and `.env` with the API key (gitignored).
+
+**NOTE:** This task involves the Anthropic/Claude API — consult the `claude-api`
+skill for current model ids, tool-use/forced-JSON, and web-search usage rather
+than relying on memory.
