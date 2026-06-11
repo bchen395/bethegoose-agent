@@ -1,0 +1,9 @@
+# Secrets and local data — never commit
+.env
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
