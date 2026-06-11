@@ -18,7 +18,7 @@ The build order below mirrors `SPEC.md` § "Build order".
 | 2 | DB helpers | `utils/db.py` | ✅ Done & tested |
 | 3 | Claude client | `utils/claude.py` | ✅ Done & tested (offline; live call needs a key) |
 | 4 | Strategy Agent | `agents/strategy_agent.py` | ✅ Done & tested (offline; live run needs a key) |
-| 5 | Content Agent | `agents/content_agent.py` | ⬜ Not started |
+| 5 | Content Agent | `agents/content_agent.py` | ✅ Done & tested (offline; live run needs a key) |
 | 6 | Review UI | `ui/app.py` | ⬜ Not started |
 | 7 | Distribution Agent | `agents/distribution_agent.py` | ⬜ Not started |
 | 8 | Cron wiring | `cron/weekly_strategy.sh` | ⬜ Not started |
@@ -220,6 +220,75 @@ supplement and sane defaults — that's expected.
 
 ---
 
+## Step 5 — Content Agent ✅
+
+**Done:**
+- `agents/content_agent.py` — per-post supporting material. Public entry
+  `generate_draft(slot_id, art_filename=None)` is what the UI's "Generate draft"
+  button (step 6) calls, once per slot **after art is attached**. Model
+  `claude.CONTENT_MODEL` (`claude-haiku-4-5-20251001`). Flow:
+  - Reads the `calendar` slot, then resolves the art: the UI's attach-art step
+    (SPEC View 1) creates the slot's draft `posts` row and sets `art_filename` on
+    it, so the agent reads it from `slot.post_id`'s post (or an explicit
+    `art_filename` arg for CLI). **No art → `AgentError`** (the UI also disables
+    the button until art is attached).
+  - **Passes the real artwork** to the model via `claude.image_block`. For video
+    files it does **best-effort ffmpeg** frame extraction to a temp PNG; if ffmpeg
+    isn't installed it raises a clear, actionable `AgentError` (attach a still)
+    rather than generating blind — outputs must reference the actual art.
+  - Reads `brand_voice` + `settings`, `db.get_active_products()` (least-recently-
+    promoted first, for CTA rotation), and `db.get_recent_posted(5)`'s `hashtags`
+    + `reel_script` (variety only). Builds a **lean context** (only the fields it
+    uses, per SPEC § Output reliability).
+  - **The model decides the CTA.** `calendar` has no CTA column — Strategy wove
+    CTA intent into `theme`/`content_idea` — so the agent reads that intent and
+    returns `cta_type` + (for shop/snail_mail) a `product_id` chosen from
+    `active_products`. We resolve `cta_url` from that product in Python; an
+    invalid/missing id **falls back** to the least-recently-promoted fitting
+    product (snail_mail-typed for snail_mail; non-subscription for shop).
+  - Forced tool `record_draft` with a schema whose `hashtags` `minItems`/`maxItems`
+    come from `settings.hashtag_count_min/max`. Backstop in Python:
+    `_normalize_hashtags` adds missing `#`, strips inner spaces, de-dupes
+    case-insensitively, trims to max, and raises if none survive. `product_id`
+    and `reel_script` are **optional** in the schema (avoids nullable-union types,
+    which the SDK's tool `input_schema` handles awkwardly).
+  - **Reel rule:** if the slot format is `reel`, a missing/empty `reel_script`
+    raises `AgentError`; for non-reels `reel_script` is forced to null.
+  - **Upsert (no duplicate drafts):** if the slot already has a linked draft post
+    (the normal UI path), it `update_post`s that row — **`caption` is never
+    touched, so her words survive a re-generate**; otherwise it `insert_post`s and
+    `link_slot_to_post`s. `caption` always stays null (she writes it).
+  - CLI: `python agents/content_agent.py --slot <id> [--art <file>]` prints the
+    draft; `main()` surfaces `AgentError` as a clean exit.
+
+**Verify (offline tests passed on 2026-06-11):** ran a self-contained script
+against a *temp copy* of the DB (real DB confirmed untouched: posts/calendar/
+products all 0) with `claude.call_json` monkeypatched and the **real (offline)**
+`claude.image_block` encoding a tiny 1×1 PNG — no key/network used. 25 checks
+covered: model id = `CONTENT_MODEL`, image+text content blocks, schema hashtag
+bounds from settings, hashtag normalize/dedupe, shop CTA → product + resolved
+`cta_url`, caption stays null, `reel_script` null for static, slot linked on
+insert; **upsert** (same post id, no new row, pre-existing caption preserved,
+art read from the linked post); **reel without a script → `AgentError` with
+nothing written and the slot unlinked**; reel with a script saved; invalid
+`product_id` → fallback to a real product + url; snail_mail CTA picks the
+snail_mail product; missing art and missing slot both raise. To re-run: copy the
+recipe (temp DB copy + monkeypatched `claude.call_json` + a real tiny PNG) from
+the Step 2/3/4 pattern.
+
+**Live smoke test (run once `.env` has a real key):**
+```bash
+# Needs a slot to exist and art on disk. Quick path from a fresh DB:
+python agents/strategy_agent.py                          # creates this week's slots
+sqlite3 data/art_business.db "SELECT id, slot_date, format, theme FROM calendar;"
+cp /path/to/real_art.png data/art/test.png
+python agents/content_agent.py --slot <id> --art test.png
+```
+Review the hashtags (mix of tiers, specific to the image), the CTA suggestion
+(in her voice, not salesy), and — for a reel slot — the hook + outline.
+
+---
+
 ## ⚠ Open TODOs to revisit with the artist
 
 These are placeholders/guesses in the seed data — fine for running the system
@@ -255,29 +324,41 @@ After editing either seed script, just re-run it — `INSERT OR REPLACE` overwri
 
 ---
 
-## Next step → Step 5: `agents/content_agent.py`
+## Next step → Step 6: `ui/app.py` (Streamlit, 3 views + banner)
 
-Per SPEC build order #5 and § "Agent 2 — Content Agent". Model
-`claude.CONTENT_MODEL` (`claude-haiku-4-5-20251001`). On-demand, per calendar
-slot, **after art is attached** in the UI. Flow:
-- Input: one `calendar` slot (`db.get_calendar_slot`), the attached art file, the
-  `brand_voice` + `settings` rows, the relevant `products` row when `cta_type` is
-  `shop`/`snail_mail`, and recent posted rows' `hashtags` + `reel_script`
-  (`db.get_recent_posted(5)`) for variety only.
-- **Pass the actual art** to the model: `claude.call_json(..., content=[claude.image_block(art_path), {"type": "text", ...}])` so hashtags/hooks reference what's really in the post. `image_block` already validates the media type.
-- Produce: a hashtag set (count within `settings.hashtag_count_min/max`; mix
-  large/medium/niche), a CTA suggestion (+ product + URL), and — reels only — a
-  hook line + outline. **No caption** (`caption` stays null; she writes it).
-- Write a `draft` row via `db.insert_post(...)` (status='draft', format, art_filename,
-  hashtags, cta_type/cta_url/cta_suggestion, product_id, reel_script, agent_reasoning).
-  Then link it to the slot with `db.link_slot_to_post(slot_id, post_id)`.
-- Test with one slot + a real attached image; review hashtags, CTA, reel hook.
+Per SPEC build order #6 and § "Human review UI". Wrap **every** agent trigger in
+`st.spinner(...)` and `try/except` so a failed API call surfaces an error instead
+of leaving a half-written row (agents already raise `claude.AgentError` and write
+nothing on failure — surface its message). Three views + a banner:
+- **View 1 — Weekly calendar:** show `db.get_calendar_week(week_start)` (date,
+  format badge, theme, content idea, priority, status). Per slot: an **attach-art**
+  file upload that saves into `data/art/` and sets `art_filename` on the slot's
+  linked draft — **create the draft row if needed and `db.link_slot_to_post`** (this
+  is the row the Content Agent then fills in). **Generate draft** button (disabled
+  until art is attached) → `content_agent.generate_draft(slot_id)`. **"Run weekly
+  plan now"** button → `strategy_agent.run_weekly_plan()` (cron fallback).
+- **View 2 — Post review:** list `db.get_posts_by_status("draft")`; show art preview,
+  hashtags, CTA suggestion + URL, agent reasoning, and (if reel) the hook/script.
+  A **caption text box** she writes herself → `db.update_post(id, caption=...)`.
+  Editable hashtag/CTA fields. **Approve** (requires non-empty caption) →
+  `db.set_post_status(id,"approved")` then triggers the Distribution Agent (step 7,
+  not built yet — guard for its absence). **Discard** → `db.set_post_status(id,"discarded")`.
+- **View 3 — Engagement entry (core):** `db.get_posts_missing_engagement()` form →
+  `db.update_engagement(...)`. Persistent banner: "N posted items still need their numbers."
+- **Market banner:** `db.get_markets_with_deadline(14)` + each row's `draft_application`.
+
+> **Attach-art contract** (matches what the Content Agent expects): the UI owns
+> creating the draft `posts` row and setting `art_filename` on it; `generate_draft`
+> reads the art from the slot's linked post and **upserts** that same row (never
+> duplicates, never clobbers `caption`). Store the **bare filename** in
+> `art_filename` (the agent resolves it under `data/art/`).
 
 **Reminders for later steps:** Distribution (#7) is `call_json` only (no image, no
 search), `claude.DISTRIBUTION_MODEL`; it writes `posting_checklist`,
 `markets.draft_application`, and stamps `products.last_promoted_at` on approval.
-A reusable offline-test recipe (temp DB copy + monkeypatched `claude.*`) is proven
-in the Step 2/3/4 sections — copy it for #5 and #7.
+The reusable offline-test recipe (temp DB copy + monkeypatched `claude.*`; for an
+image-using agent, a real tiny PNG + monkeypatched `call_json`) is proven in the
+Step 2/3/4/5 sections — copy it for #7.
 
 **NOTE:** Anything touching the Claude API — consult the `claude-api` skill for
 current model ids and usage rather than relying on memory. The installed SDK is
