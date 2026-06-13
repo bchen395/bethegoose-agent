@@ -1,6 +1,13 @@
 # Secrets and local data — never commit
 .env
+.env*.local
 data/
+
+# Node / Next.js
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
 
 # Python
 __pycache__/
