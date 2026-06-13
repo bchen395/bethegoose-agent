@@ -1,8 +1,18 @@
-import { getPostsByStatus, getPostsMissingEngagement } from "@/lib/db";
+import Link from "next/link";
+
+import { getPostsByStatus, getPostsMissingEngagement, getRecentPosted } from "@/lib/db";
 import { signedDisplayUrl } from "@/lib/storage";
 import { FORMAT_BADGE, badge } from "../_lib/format";
 import MarkPostedButton from "../_components/MarkPostedButton";
 import NumbersForm from "../_components/NumbersForm";
+import SubscriberForm, { type PostOption } from "../_components/SubscriberForm";
+
+/** Build a compact picker label for a posted post. */
+function postLabel(post: { id: number; format: string | null; caption: string | null }): string {
+  const fmt = (post.format && FORMAT_BADGE[post.format]) || post.format || "post";
+  const cap = post.caption ? ` — ${post.caption.slice(0, 40)}${post.caption.length > 40 ? "…" : ""}` : "";
+  return `#${post.id} ${fmt}${cap}`;
+}
 
 async function artUrlFor(key: string | null): Promise<string | null> {
   if (!key) return null;
@@ -14,10 +24,13 @@ async function artUrlFor(key: string | null): Promise<string | null> {
 }
 
 export default async function EngagementPage() {
-  const [approved, missing] = await Promise.all([
+  const [approved, missing, recentPosted] = await Promise.all([
     getPostsByStatus("approved"),
     getPostsMissingEngagement(),
+    getRecentPosted(20),
   ]);
+
+  const postOptions: PostOption[] = recentPosted.map((p) => ({ id: p.id, label: postLabel(p) }));
 
   const approvedCards = await Promise.all(
     approved.map(async (p) => ({ post: p, artUrl: await artUrlFor(p.artFilename) })),
@@ -87,10 +100,11 @@ export default async function EngagementPage() {
                 <NumbersForm
                   postId={post.id}
                   initial={{
-                    likes: post.likes ?? 0,
-                    comments: post.comments ?? 0,
-                    reach: post.reach ?? 0,
-                    saves: post.saves ?? 0,
+                    saves: post.saves,
+                    reach: post.reach,
+                    likes: post.likes,
+                    comments: post.comments,
+                    shares: post.shares,
                   }}
                 />
               </div>
@@ -102,6 +116,14 @@ export default async function EngagementPage() {
           </div>
         ))
       )}
+
+      <hr style={{ margin: "20px 0", border: "none", borderTop: "1px solid var(--border)" }} />
+
+      <h2>Subscribers</h2>
+      <SubscriberForm posts={postOptions} />
+      <p className="muted" style={{ fontSize: 13 }}>
+        See which CTA types convert in the <Link href="/insights">Insights view</Link>.
+      </p>
     </main>
   );
 }

@@ -34,8 +34,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {/* Always-on banners (engagement nudge + market deadlines). */}
         {missing.length > 0 && (
           <div className="banner">
-            📊 {missing.length} posted item(s) still need their numbers — open the Engagement view
-            to keep the learning loop fed.
+            📊 {missing.length} posted item(s) still missing saves or reach — open the Engagement
+            view to keep the learning loop fed.
           </div>
         )}
         {deadlines.map((m) => (

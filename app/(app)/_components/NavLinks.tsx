@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/calendar", label: "📅 Calendar" },
   { href: "/review", label: "📝 Review" },
   { href: "/engagement", label: "📊 Engagement" },
+  { href: "/insights", label: "💡 Insights" },
 ];
 
 export default function NavLinks() {

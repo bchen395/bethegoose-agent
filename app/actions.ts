@@ -15,6 +15,7 @@ import { redirect } from "next/navigation";
 import {
   getCalendarSlot,
   insertPost,
+  insertSubscriberEvent,
   linkSlotToPost,
   markPosted as dbMarkPosted,
   setPostStatus,
@@ -111,15 +112,56 @@ export async function markPosted(postId: number): Promise<void> {
   revalidatePath("/engagement");
 }
 
+/** Coerce to a non-negative integer, or null if blank/invalid. */
+function cleanCount(v: number | null | undefined): number | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  return Math.max(0, Math.floor(v));
+}
+
 export async function saveNumbers(
   postId: number,
-  likes: number,
-  comments: number,
-  reach: number,
-  saves: number,
+  metrics: {
+    reach: number | null;
+    saves: number | null;
+    likes: number | null;
+    comments: number | null;
+    shares: number | null;
+  },
 ): Promise<void> {
-  await updateEngagement(postId, likes, comments, reach, saves);
+  // saves + reach are the only required fields (FEATURES.md §3).
+  const reach = cleanCount(metrics.reach);
+  const saves = cleanCount(metrics.saves);
+  if (reach == null || saves == null) {
+    throw new Error("Saves and reach are required.");
+  }
+  await updateEngagement(postId, {
+    reach,
+    saves,
+    likes: cleanCount(metrics.likes),
+    comments: cleanCount(metrics.comments),
+    shares: cleanCount(metrics.shares),
+  });
   revalidatePath("/engagement");
+  revalidatePath("/insights");
+}
+
+/** Log new subscribers (FEATURES.md §4), optionally attributed to a post. */
+export async function logSubscriberEvent(input: {
+  channel: string;
+  count: number;
+  sourcePostId?: number | null;
+  note?: string | null;
+}): Promise<void> {
+  const channel = input.channel === "snail_mail" || input.channel === "email" ? input.channel : null;
+  if (!channel) throw new Error("Channel must be 'snail_mail' or 'email'.");
+  const count = cleanCount(input.count);
+  if (count == null || count < 1) throw new Error("Count must be at least 1.");
+  const sourcePostId =
+    input.sourcePostId != null && Number.isInteger(input.sourcePostId) ? input.sourcePostId : null;
+  const note = (input.note ?? "").trim() || null;
+  await insertSubscriberEvent({ channel, count, sourcePostId, note });
+  revalidatePath("/engagement");
+  revalidatePath("/insights");
 }
 
 export async function signOut(): Promise<void> {
