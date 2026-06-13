@@ -148,6 +148,7 @@ async function draftMarketBlurb(market: Market, brandVoice: BrandVoice | null): 
     toolName: "record_market_blurb",
     toolDescription: "Record the art-market application blurb.",
     maxTokens: 600,
+    agent: "distribution",
   });
   const blurb = (result.market_blurb || "").trim();
   if (!blurb) throw new AgentError("Distribution Agent returned an empty market blurb.");

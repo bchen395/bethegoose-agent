@@ -18,6 +18,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
+import { insertUsageLog } from "./db";
+
 // --- Models (unchanged from SPEC § Stack decisions) -------------------------
 
 export const STRATEGY_MODEL = "claude-sonnet-4-6"; // editorial judgment
@@ -26,6 +28,82 @@ export const DISTRIBUTION_MODEL = "claude-haiku-4-5-20251001"; // logic + format
 
 // Each web search is billable; the Strategy Agent runs 2-3 per run.
 export const MAX_WEB_SEARCHES = 3;
+
+// --- Cost meter (FEATURES.md §7) --------------------------------------------
+
+/** Which agent a model call belongs to (matches the usage_log.agent CHECK). */
+export type UsageAgent = "strategy" | "content" | "distribution";
+
+/**
+ * ⚠ Anthropic prices — confirmed 2026-06-13 (claude-api skill + platform docs).
+ * USD per 1M tokens. If Anthropic changes prices, update THIS map only — it's the
+ * single source of truth for the cost meter. Treat like the other ⚠ placeholders.
+ */
+const MODEL_PRICES: Record<string, { input: number; output: number }> = {
+  "claude-sonnet-4-6": { input: 3, output: 15 },
+  "claude-haiku-4-5-20251001": { input: 1, output: 5 },
+  "claude-haiku-4-5": { input: 1, output: 5 },
+};
+
+/** ⚠ Web search: $10 per 1,000 searches (confirmed 2026-06-13). */
+const WEB_SEARCH_PRICE_PER_SEARCH = 10 / 1000;
+
+/** Estimated USD cost of one call. Unknown model -> token cost 0 (searches still count). */
+export function estimateCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  webSearches: number,
+): number {
+  const price =
+    MODEL_PRICES[model] ??
+    Object.entries(MODEL_PRICES).find(([id]) => model.startsWith(id))?.[1] ??
+    null;
+  const tokenCost = price
+    ? (inputTokens / 1_000_000) * price.input + (outputTokens / 1_000_000) * price.output
+    : 0;
+  return tokenCost + webSearches * WEB_SEARCH_PRICE_PER_SEARCH;
+}
+
+/** Pull (input, output, web_search) counts off a response's usage block. */
+function readUsage(resp: Anthropic.Message): {
+  input: number;
+  output: number;
+  webSearches: number;
+} {
+  const u = resp.usage as
+    | { input_tokens?: number; output_tokens?: number; server_tool_use?: { web_search_requests?: number } }
+    | undefined;
+  return {
+    input: u?.input_tokens ?? 0,
+    output: u?.output_tokens ?? 0,
+    webSearches: u?.server_tool_use?.web_search_requests ?? 0,
+  };
+}
+
+/**
+ * Log one usage_log row. Never throws — a logging failure must not break an agent
+ * (FEATURES.md §7). Skips silently when no agent label is supplied.
+ */
+async function logUsage(
+  agent: UsageAgent | undefined,
+  model: string,
+  usage: { input: number; output: number; webSearches: number },
+): Promise<void> {
+  if (!agent) return;
+  try {
+    await insertUsageLog({
+      agent,
+      model,
+      inputTokens: usage.input,
+      outputTokens: usage.output,
+      webSearches: usage.webSearches,
+      estCostUsd: estimateCost(model, usage.input, usage.output, usage.webSearches),
+    });
+  } catch {
+    // swallow: logging is best-effort and must never break the agent.
+  }
+}
 
 // Current web-search tool version (server-side; searches + synthesizes in one turn).
 const WEB_SEARCH_TOOL = "web_search_20260209";
@@ -148,6 +226,7 @@ export async function callJson<T>(opts: {
   toolName?: string;
   toolDescription?: string;
   maxTokens?: number;
+  agent?: UsageAgent;
 }): Promise<T> {
   const {
     model,
@@ -157,6 +236,7 @@ export async function callJson<T>(opts: {
     toolName = "record",
     toolDescription = "Record the structured result.",
     maxTokens = 2048,
+    agent,
   } = opts;
 
   const client = getClient();
@@ -192,6 +272,9 @@ export async function callJson<T>(opts: {
       throw e;
     }
 
+    // Meter every billed attempt (a retry is a second billable call).
+    await logUsage(agent, model, readUsage(resp));
+
     try {
       const raw = extractToolResult(resp, toolName);
       const parsed = schema.safeParse(raw);
@@ -225,6 +308,7 @@ export async function webSearch(opts: {
   system?: string;
   maxSearches?: number;
   maxTokens?: number;
+  agent?: UsageAgent;
 }): Promise<{ text: string; queries: string[] }> {
   const {
     prompt,
@@ -232,6 +316,7 @@ export async function webSearch(opts: {
     system,
     maxSearches = MAX_WEB_SEARCHES,
     maxTokens = 4096,
+    agent,
   } = opts;
 
   const client = getClient();
@@ -241,6 +326,7 @@ export async function webSearch(opts: {
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: prompt }];
   const queries: string[] = [];
   const textParts: string[] = [];
+  const acc = { input: 0, output: 0, webSearches: 0 }; // summed across pause_turn loop
 
   for (let i = 0; i < 5; i++) {
     // bounded: handle pause_turn
@@ -259,6 +345,11 @@ export async function webSearch(opts: {
       }
       throw e;
     }
+
+    const u = readUsage(resp);
+    acc.input += u.input;
+    acc.output += u.output;
+    acc.webSearches += u.webSearches;
 
     for (const block of resp.content as Array<{ type: string; name?: string; input?: unknown; text?: string }>) {
       if (block.type === "server_tool_use" && block.name === "web_search") {
@@ -280,5 +371,6 @@ export async function webSearch(opts: {
     break;
   }
 
+  await logUsage(agent, model, acc); // one row for the whole search turn
   return { text: textParts.filter(Boolean).join("\n").trim(), queries };
 }

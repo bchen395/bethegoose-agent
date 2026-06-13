@@ -7,6 +7,7 @@ import {
   getTopPosts,
 } from "@/lib/db";
 import { signedDisplayUrl } from "@/lib/storage";
+import ReuseHitsButton from "../_components/ReuseHitsButton";
 import { FORMAT_BADGE, badge } from "../_lib/format";
 
 const WINDOW = INSIGHTS_WINDOW_DAYS;
@@ -158,6 +159,18 @@ export default async function InsightsPage() {
               </div>
             </div>
           ))}
+        </section>
+      )}
+
+      {/* --- Reuse your hits (§8) ----------------------------------------- */}
+      {hasPosts && (
+        <section className="card">
+          <h2 style={{ marginTop: 0 }}>♻️ Reuse your hits</h2>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Concrete ways to get more mileage from your top posts — turn a popular doodle into a
+            sticker, re-cut a comic as a reel, compile a theme into a carousel.
+          </p>
+          <ReuseHitsButton />
         </section>
       )}
 

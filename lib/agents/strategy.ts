@@ -18,8 +18,10 @@ import {
   getRecentPosts,
   getSettings,
   getUpcomingMarkets,
+  nowIso,
   replaceWeekPlan,
   todayIso,
+  updateSettings,
   type Market,
   type Post,
   type Product,
@@ -28,6 +30,10 @@ import {
 } from "../db";
 
 const VALID_FORMATS = ["static", "carousel", "reel", "story"] as const;
+
+// FEATURES.md §6: on the 'monthly' cadence, only search if the last search is at
+// least this many days old. The MAX_WEB_SEARCHES per-run cap (lib/claude) still applies.
+const WEB_SEARCH_MIN_DAYS = 28;
 
 // Forced-JSON shape for the synthesis call. `slots` carry exactly the writable
 // calendar columns; `reasoning` is surfaced to the human, not stored.
@@ -140,12 +146,23 @@ function researchPrompt(today: DateTime): string {
   );
 }
 
+/** Render settings.weekly_mix as "reel:3, carousel:2, static:1" for the prompt. */
+function formatWeeklyMix(mix: Record<string, number> | null | undefined): string {
+  const entries = Object.entries(mix ?? {}).filter(([, w]) => typeof w === "number" && w > 0);
+  if (entries.length === 0) return "no explicit target set";
+  return entries
+    .sort((a, b) => b[1] - a[1])
+    .map(([fmt, w]) => `${fmt}:${w}`)
+    .join(", ");
+}
+
 function systemPrompt(settings: Settings): string {
   const defaultTime = settings.defaultPostTime;
   const reelRule = settings.reelsRequired
     ? "Include at least one reel this week — reels_required is on."
     : "Include a reel only when she's likely to have process footage to film; " +
       "never prescribe video she can't realistically shoot.";
+  const mixTarget = formatWeeklyMix(settings.weeklyMix);
   return `You are the Strategy Agent for a one-person indie art business on \
 Instagram (under 1,000 followers). The artist draws original comics, doodles, and \
 stickers and sells prints, stickers, crafts, and a monthly snail-mail subscription. \
@@ -160,11 +177,16 @@ beats any article claiming "reels win." Treat \`web_findings\` as a light supple
 for seasonal hooks and obviously fresh-or-stale hashtags only — never let it override \
 what her own numbers show.
 
-FORMAT MIX:
+FORMAT MIX — target for a FULL week (from settings.weekly_mix): ${mixTarget}.
+This is the relative EMPHASIS, not a literal count: she posts only ~3-4x/week, so honor the \
+proportions, don't try to hit the raw numbers.
+- Lead with reels — they reach non-followers and drive most discovery for a sub-1K account.
+- Include carousels — they earn the most saves (the metric that matters here).
+- Use static (her core comic/doodle) more sparingly, per the target's lower weight.
 - ${reelRule}
-- Aim for at least one carousel — they tend to earn saves.
-- One static post (her core comic/doodle) is good.
 - Vary formats across the week unless her own data clearly favors repeating one.
+- Her own \`format_performance\` STILL OUTRANKS this target — if her carousels clearly out-save \
+her reels, weight toward what her numbers show, not the default mix.
 
 CTAs — there is NO separate CTA field, so weave the CTA intent into \`theme\`/\`content_idea\`:
 - Rotate calls to action; don't promote the shop two slots in a row (see \`signals.recent_cta_sequence\`).
@@ -210,6 +232,7 @@ function context(
       reels_required: Boolean(settings.reelsRequired),
       hashtag_count_min: settings.hashtagCountMin,
       hashtag_count_max: settings.hashtagCountMax,
+      weekly_mix: settings.weeklyMix,
     },
     format_performance: formatPerformance(posts),
     recent_posts: posts.map(trimPost),
@@ -288,6 +311,43 @@ function validateSlots(
   return cleaned;
 }
 
+// --- Content-mix nudge (FEATURES.md §5) -------------------------------------
+
+export type MixSummary = {
+  target: Record<string, number>;
+  actual: Record<string, number>;
+  note: string | null;
+};
+
+/**
+ * Compare the plan's format distribution against settings.weekly_mix. This is a
+ * NUDGE, never a hard-fail (she may have only doodles a given week): the prompt
+ * is the real lever; this just surfaces how the week landed and flags a gentle,
+ * honest note if the target's top-emphasis format got no slot at all.
+ */
+function mixSummary(slots: SlotInput[], target: Record<string, number> | null | undefined): MixSummary {
+  const tgt = target ?? {};
+  const actual: Record<string, number> = {};
+  for (const s of slots) actual[s.format] = (actual[s.format] ?? 0) + 1;
+
+  let topFmt: string | null = null;
+  let topWeight = 0;
+  for (const [fmt, w] of Object.entries(tgt)) {
+    if (typeof w === "number" && w > topWeight) {
+      topWeight = w;
+      topFmt = fmt;
+    }
+  }
+
+  let note: string | null = null;
+  if (topFmt && topWeight > 0 && !(actual[topFmt] > 0)) {
+    note =
+      `Target leads with ${topFmt} (weight ${topWeight}) but the plan has none — ` +
+      "fine if she lacked the material this week.";
+  }
+  return { target: tgt, actual, note };
+}
+
 // --- Orchestration ----------------------------------------------------------
 
 function mondayOfWeek(d: DateTime): DateTime {
@@ -295,10 +355,35 @@ function mondayOfWeek(d: DateTime): DateTime {
   return d.minus({ days: d.weekday - 1 }).startOf("day");
 }
 
+export type WebSkipReason = "cadence" | "off" | null;
+
+/**
+ * Decide whether to run web search this cycle (FEATURES.md §6):
+ *   'off'     -> never
+ *   'weekly'  -> always (legacy behavior)
+ *   'monthly' -> only if last_web_search_at is null or >= WEB_SEARCH_MIN_DAYS old
+ * Returns the reason it was skipped so the UI can explain itself.
+ */
+function decideWebSearch(
+  settings: Settings,
+  today: DateTime,
+): { search: boolean; skipReason: WebSkipReason } {
+  const cadence = settings.webSearchCadence;
+  if (cadence === "off") return { search: false, skipReason: "off" };
+  if (cadence === "weekly") return { search: true, skipReason: null };
+
+  // 'monthly' (default): gate on the stamp.
+  const last = settings.lastWebSearchAt ? DateTime.fromISO(settings.lastWebSearchAt) : null;
+  if (!last || !last.isValid) return { search: true, skipReason: null }; // never searched
+  const ageDays = today.startOf("day").diff(last.startOf("day"), "days").days;
+  if (ageDays >= WEB_SEARCH_MIN_DAYS) return { search: true, skipReason: null };
+  return { search: false, skipReason: "cadence" };
+}
+
 /** Web search as a degradable supplement — never blocks the weekly plan. */
 async function runResearch(today: DateTime): Promise<{ ok: boolean; text: string; queries: string[] }> {
   try {
-    const result = await webSearch({ prompt: researchPrompt(today) });
+    const result = await webSearch({ prompt: researchPrompt(today), agent: "strategy" });
     return { ok: true, text: result.text, queries: result.queries };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -313,6 +398,10 @@ export type WeeklyPlanResult = {
   reasoning: string;
   webQueries: string[];
   webUsed: boolean;
+  webSkippedReason: WebSkipReason;
+  mixTarget: Record<string, number>;
+  mixActual: Record<string, number>;
+  mixNote: string | null;
 };
 
 /**
@@ -342,7 +431,23 @@ export async function runWeeklyPlan(weekStart?: string): Promise<WeeklyPlanResul
   const posts = await getRecentPosts(30);
   const markets = await getUpcomingMarkets(45);
   const products = await getActiveProducts();
-  const web = await runResearch(today);
+
+  // FEATURES.md §6: web search is now cadence-gated (default 'monthly').
+  const { search: doSearch, skipReason } = decideWebSearch(settings, today);
+  const web = doSearch
+    ? await runResearch(today)
+    : {
+        ok: false,
+        text:
+          skipReason === "off"
+            ? "(web search is turned off in settings — planned from first-party data only)"
+            : "(web search skipped — searched within the last 28 days; monthly cadence)",
+        queries: [] as string[],
+      };
+  // Stamp only when a search actually ran and returned at least one query.
+  if (doSearch && web.ok && web.queries.length > 0) {
+    await updateSettings({ lastWebSearchAt: await nowIso() });
+  }
 
   const ctx = context(today, ws, we, allowedDates, settings, posts, markets, products, web);
   const result = await callJson({
@@ -353,9 +458,11 @@ export async function runWeeklyPlan(weekStart?: string): Promise<WeeklyPlanResul
     toolName: "record_plan",
     toolDescription: "Record the weekly content calendar.",
     maxTokens: 3000,
+    agent: "strategy",
   });
 
   const slots = validateSlots(result.slots, allowedDates, defaultTime);
+  const mix = mixSummary(slots, settings.weeklyMix);
   const rowIds = await replaceWeekPlan(ws.toISODate()!, slots);
   return {
     weekStart: ws.toISODate()!,
@@ -364,5 +471,9 @@ export async function runWeeklyPlan(weekStart?: string): Promise<WeeklyPlanResul
     reasoning: (result.reasoning || "").trim(),
     webQueries: web.queries,
     webUsed: web.ok,
+    webSkippedReason: skipReason,
+    mixTarget: mix.target,
+    mixActual: mix.actual,
+    mixNote: mix.note,
   };
 }

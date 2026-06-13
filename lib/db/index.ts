@@ -24,6 +24,7 @@ import {
   products,
   settings,
   subscriberEvents,
+  usageLog,
   type BrandVoice,
   type CalendarSlot,
   type Market,
@@ -90,6 +91,14 @@ async function dateWindow(days: number): Promise<[string, string]> {
 export async function getSettings(): Promise<Settings | null> {
   const rows = await db.select().from(settings).where(eq(settings.id, 1)).limit(1);
   return rows[0] ?? null;
+}
+
+/** Patch the single settings row (id = 1). Used by the §6 web-search cadence stamp. */
+export async function updateSettings(
+  fields: Partial<typeof settings.$inferInsert>,
+): Promise<void> {
+  if (Object.keys(fields).length === 0) return;
+  await db.update(settings).set(fields).where(eq(settings.id, 1));
 }
 
 export async function getBrandVoice(): Promise<BrandVoice | null> {
@@ -575,4 +584,40 @@ export async function getSubscriberTrend(
     byChannel,
     weekly: weeklyRows.map((r) => ({ weekStart: String(r.weekStart), count: Number(r.count) })),
   };
+}
+
+// --- cost meter (§7): usage_log writes + monthly spend ----------------------
+
+/** Log one agent call's token/web-search usage + estimated cost (computed by the caller). */
+export async function insertUsageLog(fields: {
+  agent: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  webSearches: number;
+  estCostUsd: number;
+}): Promise<void> {
+  await db.insert(usageLog).values({
+    occurredAt: await nowIso(),
+    agent: fields.agent,
+    model: fields.model,
+    inputTokens: fields.inputTokens,
+    outputTokens: fields.outputTokens,
+    webSearches: fields.webSearches,
+    estCostUsd: String(fields.estCostUsd), // numeric column stores text
+  });
+}
+
+/**
+ * Total estimated API spend for the current calendar month (settings.timezone).
+ * Month start is a YYYY-MM-01 date; occurredAt is full ISO, so the lexicographic
+ * compare matches every timestamp in the month (same approach as windowStart).
+ */
+export async function getMonthlySpend(): Promise<number> {
+  const monthStart = (await nowInZone()).startOf("month").toISODate()!;
+  const rows = await db
+    .select({ total: sql<number>`coalesce(sum(${usageLog.estCostUsd}), 0)::float8` })
+    .from(usageLog)
+    .where(gte(usageLog.occurredAt, monthStart));
+  return Number(rows[0]?.total ?? 0);
 }

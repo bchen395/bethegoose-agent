@@ -1,9 +1,10 @@
-import { getPostsByStatus, getProduct } from "@/lib/db";
+import { getPostsByStatus, getProduct, getSettings } from "@/lib/db";
 import { signedDisplayUrl } from "@/lib/storage";
 import ReviewCard, { type ReviewCardData } from "../_components/ReviewCard";
 
 export default async function ReviewPage() {
-  const drafts = await getPostsByStatus("draft");
+  const [drafts, settings] = await Promise.all([getPostsByStatus("draft"), getSettings()]);
+  const captionStartersEnabled = Boolean(settings?.captionStartersEnabled);
 
   const cards: ReviewCardData[] = await Promise.all(
     drafts.map(async (post): Promise<ReviewCardData> => {
@@ -32,6 +33,7 @@ export default async function ReviewPage() {
         ctaUrl: post.ctaUrl,
         ctaSuggestion: post.ctaSuggestion,
         artUrl,
+        captionStartersEnabled,
       };
     }),
   );

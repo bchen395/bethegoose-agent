@@ -266,6 +266,7 @@ export async function generateDraft(slotId: number, artKey?: string): Promise<Ge
     toolName: "record_draft",
     toolDescription: "Record the post's hashtags, CTA suggestion, and reel script.",
     maxTokens: 1500,
+    agent: "content",
   });
 
   const hashtags = normalizeHashtags(result.hashtags, hmax);

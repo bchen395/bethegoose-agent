@@ -18,6 +18,7 @@ export type ReviewCardData = {
   ctaUrl: string | null;
   ctaSuggestion: string | null;
   artUrl: string | null;
+  captionStartersEnabled: boolean;
 };
 
 export default function ReviewCard({ post }: { post: ReviewCardData }) {
@@ -30,6 +31,11 @@ export default function ReviewCard({ post }: { post: ReviewCardData }) {
   const [busy, setBusy] = useState<"save" | "approve" | "discard" | null>(null);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
+  // §9 caption starters (only when the flag is on) — read-only inspiration; the
+  // caption field stays empty + required, so we never auto-fill it.
+  const [starters, setStarters] = useState<string[] | null>(null);
+  const [startersBusy, setStartersBusy] = useState(false);
+  const [startersError, setStartersError] = useState("");
 
   function fields() {
     return { caption, hashtagsText, ctaType, ctaUrl, ctaSuggestion };
@@ -45,6 +51,28 @@ export default function ReviewCard({ post }: { post: ReviewCardData }) {
       router.refresh();
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function onStarters() {
+    setStartersBusy(true);
+    setStartersError("");
+    try {
+      const res = await fetch("/api/review/caption-starters", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ postId: post.id }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setStartersError(data.error || "Couldn't fetch starters.");
+      } else {
+        setStarters(data.starters ?? []);
+      }
+    } catch {
+      setStartersError("Network error fetching starters.");
+    } finally {
+      setStartersBusy(false);
     }
   }
 
@@ -124,6 +152,26 @@ export default function ReviewCard({ post }: { post: ReviewCardData }) {
             onChange={(e) => setCaption(e.target.value)}
           />
         </label>
+        {post.captionStartersEnabled && (
+          <div>
+            <button className="btn" onClick={onStarters} disabled={startersBusy} type="button">
+              {startersBusy ? "Thinking…" : "✨ Need a starting line?"}
+            </button>
+            {startersError && <p className="err">{startersError}</p>}
+            {starters && starters.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Starters for inspiration — you still write your own caption:
+                </div>
+                <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 14 }}>
+                  {starters.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         <label>
           Hashtags
           <textarea
