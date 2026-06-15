@@ -76,12 +76,11 @@ const AVOID_PHRASES = [
   "exclusive deal",
 ];
 
-// ⚠ PLACEHOLDER — she did not provide a snail-mail pitch. Replace before relying
-// on any snail-mail CTA output.
+// Snail-mail subscription pitch (artist-provided wording). The Content Agent bases
+// any snail-mail CTA on this; keep it in her voice.
 const SNAIL_MAIL_PITCH =
-  "[PLACEHOLDER — replace with her words] Every month I mail out a little packet " +
-  "of original doodles, a sticker or two, and a handwritten note — basically happy " +
-  "mail straight from my desk to yours!";
+  "Every month I mail out a little packet - a dog of the month zine, a few stickers, " +
+  "and a handwritten note from my dog, Lady!";
 
 const BRAND_VOICE = {
   id: 1,
