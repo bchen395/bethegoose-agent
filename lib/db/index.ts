@@ -406,11 +406,16 @@ async function windowStart(days: number): Promise<string> {
  */
 function scoreExpr() {
   const w = SCORE_WEIGHTS;
+  // Inline the weights as numeric SQL literals, NOT bound params: a fractional weight
+  // (e.g. 0.25) bound as a param in `$n * <integer column>` gets type-inferred as
+  // integer and Postgres rejects "0.25" (22P02). The weights are compile-time numeric
+  // constants, so `sql.raw` here is injection-safe (Number() guards it regardless).
+  const lit = (n: number) => sql.raw(String(Number(n)));
   const weighted = sql`(
-    ${w.shares} * coalesce(${posts.shares}, 0)
-    + ${w.saves} * coalesce(${posts.saves}, 0)
-    + ${w.comments} * coalesce(${posts.comments}, 0)
-    + ${w.likes} * coalesce(${posts.likes}, 0)
+    ${lit(w.shares)} * coalesce(${posts.shares}, 0)
+    + ${lit(w.saves)} * coalesce(${posts.saves}, 0)
+    + ${lit(w.comments)} * coalesce(${posts.comments}, 0)
+    + ${lit(w.likes)} * coalesce(${posts.likes}, 0)
   )::numeric`;
   return sql`case when coalesce(${posts.reach}, 0) > 0 then ${weighted} / ${posts.reach} else ${weighted} end`;
 }
