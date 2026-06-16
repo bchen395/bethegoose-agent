@@ -13,17 +13,29 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
+  deleteMarket,
   getCalendarSlot,
+  insertMarket,
   insertPost,
+  insertProduct,
   insertSubscriberEvent,
   linkSlotToPost,
   markPosted as dbMarkPosted,
   setPostStatus,
+  updateBrandVoice,
   updateEngagement,
+  updateMarket,
   updatePost,
+  updateProduct,
+  updateSettings,
 } from "@/lib/db";
 import { buildArtKey, createSignedUploadUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
+import {
+  MARKET_STATUSES,
+  PRODUCT_TYPES,
+  WEB_SEARCH_CADENCES,
+} from "@/app/(app)/_lib/format";
 
 const CTA_OPTIONS = ["none", "shop", "snail_mail", "market"];
 
@@ -162,6 +174,155 @@ export async function logSubscriberEvent(input: {
   await insertSubscriberEvent({ channel, count, sourcePostId, note });
   revalidatePath("/engagement");
   revalidatePath("/insights");
+}
+
+// --- Item #2: CRUD for products / markets / settings / brand voice ----------
+//
+// These back the authed CRUD screens that replace the seed-only data entry.
+// Each validates enums + CHECK-constraint preconditions before writing so the
+// user gets a clean message instead of a raw Postgres error, mirroring the
+// CTA_OPTIONS pattern above. Agent-owned fields (products.lastPromotedAt,
+// markets.draftApplication) are never accepted here.
+
+/** Split a textarea (one item per line) into a clean, de-duped list. */
+function parseLines(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const key = line.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(line);
+    }
+  }
+  return out;
+}
+
+type ProductInput = { name: string; url: string; type: string; active: boolean };
+
+function cleanProduct(data: ProductInput) {
+  const name = data.name.trim();
+  if (!name) throw new Error("Product name is required.");
+  if (!PRODUCT_TYPES.includes(data.type)) throw new Error("Pick a valid product type.");
+  return { name, url: data.url.trim() || null, type: data.type, active: Boolean(data.active) };
+}
+
+export async function createProduct(data: ProductInput): Promise<void> {
+  await insertProduct(cleanProduct(data));
+  revalidatePath("/products");
+}
+
+export async function updateProductAction(productId: number, data: ProductInput): Promise<void> {
+  await updateProduct(productId, cleanProduct(data));
+  revalidatePath("/products");
+}
+
+type MarketInput = {
+  name: string;
+  location: string;
+  eventDate: string;
+  applicationDeadline: string;
+  status: string;
+  notes: string;
+};
+
+function cleanMarket(data: MarketInput) {
+  const name = data.name.trim();
+  if (!name) throw new Error("Market name is required.");
+  const status = data.status.trim();
+  if (status && !MARKET_STATUSES.includes(status)) throw new Error("Pick a valid market status.");
+  return {
+    name,
+    location: data.location.trim() || null,
+    eventDate: data.eventDate.trim() || null,
+    applicationDeadline: data.applicationDeadline.trim() || null,
+    status: status || null,
+    notes: data.notes.trim() || null,
+  };
+}
+
+export async function createMarket(data: MarketInput): Promise<void> {
+  await insertMarket(cleanMarket(data));
+  revalidatePath("/markets");
+}
+
+export async function updateMarketAction(marketId: number, data: MarketInput): Promise<void> {
+  await updateMarket(marketId, cleanMarket(data));
+  revalidatePath("/markets");
+}
+
+export async function deleteMarketAction(marketId: number): Promise<void> {
+  await deleteMarket(marketId);
+  revalidatePath("/markets");
+}
+
+export async function saveSettings(data: {
+  timezone: string;
+  hashtagCountMin: number;
+  hashtagCountMax: number;
+  defaultPostTime: string;
+  reelsRequired: boolean;
+  weeklyMix: { reel: number; carousel: number; static: number };
+  webSearchCadence: string;
+  monthlyBudgetUsd: string;
+  captionStartersEnabled: boolean;
+}): Promise<void> {
+  const timezone = data.timezone.trim();
+  if (!timezone) throw new Error("Timezone is required.");
+  const defaultPostTime = data.defaultPostTime.trim();
+  if (!/^\d{2}:\d{2}$/.test(defaultPostTime)) {
+    throw new Error("Default post time must be HH:MM (e.g. 18:30).");
+  }
+  const hashtagCountMin = cleanCount(data.hashtagCountMin);
+  const hashtagCountMax = cleanCount(data.hashtagCountMax);
+  if (hashtagCountMin == null || hashtagCountMax == null) {
+    throw new Error("Hashtag counts must be whole numbers.");
+  }
+  if (hashtagCountMin > hashtagCountMax) {
+    throw new Error("Hashtag minimum can't be greater than the maximum.");
+  }
+  if (!WEB_SEARCH_CADENCES.includes(data.webSearchCadence)) {
+    throw new Error("Pick a valid web-search cadence.");
+  }
+  const budget = Number(data.monthlyBudgetUsd);
+  if (!Number.isFinite(budget) || budget < 0) {
+    throw new Error("Monthly budget must be a non-negative number.");
+  }
+  await updateSettings({
+    timezone,
+    hashtagCountMin,
+    hashtagCountMax,
+    defaultPostTime,
+    reelsRequired: Boolean(data.reelsRequired),
+    weeklyMix: {
+      reel: cleanCount(data.weeklyMix.reel) ?? 0,
+      carousel: cleanCount(data.weeklyMix.carousel) ?? 0,
+      static: cleanCount(data.weeklyMix.static) ?? 0,
+    },
+    webSearchCadence: data.webSearchCadence,
+    monthlyBudgetUsd: String(budget),
+    captionStartersEnabled: Boolean(data.captionStartersEnabled),
+  });
+  revalidatePath("/settings");
+}
+
+export async function saveBrandVoice(data: {
+  artistName: string;
+  toneDescription: string;
+  exampleCaptionsText: string;
+  avoidPhrasesText: string;
+  snailMailPitch: string;
+}): Promise<void> {
+  await updateBrandVoice({
+    artistName: data.artistName.trim() || null,
+    toneDescription: data.toneDescription.trim() || null,
+    exampleCaptions: parseLines(data.exampleCaptionsText),
+    avoidPhrases: parseLines(data.avoidPhrasesText),
+    snailMailPitch: data.snailMailPitch.trim() || null,
+  });
+  revalidatePath("/settings");
 }
 
 export async function signOut(): Promise<void> {

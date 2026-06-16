@@ -8,6 +8,9 @@ const LINKS = [
   { href: "/review", label: "📝 Review" },
   { href: "/engagement", label: "📊 Engagement" },
   { href: "/insights", label: "💡 Insights" },
+  { href: "/products", label: "🛍 Products" },
+  { href: "/markets", label: "🏪 Markets" },
+  { href: "/settings", label: "⚙️ Settings" },
 ];
 
 export default function NavLinks() {

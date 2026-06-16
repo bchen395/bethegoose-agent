@@ -542,3 +542,49 @@ tested. What remains is operational, not build work:
 current model ids and usage rather than relying on memory. The installed SDK is
 `anthropic 0.76.0` (tool-use only; no `output_config`), which is why the agents use
 forced tool-use — see the Step 3 section above.
+
+---
+
+## Hosted Next.js app — `AUTOMATION_PLAN.md` Item #2: CRUD screens ✅ (2026-06-16)
+
+The 8 steps above are the original local Python/Streamlit build. The app has since been
+ported to **Next.js + Supabase Postgres (Drizzle) on Vercel**. This entry logs the first
+`AUTOMATION_PLAN.md` automation item built on the hosted stack.
+
+**Problem.** Products, markets, settings, and brand voice were **seed-only** — editable only
+by hand-editing `scripts/seed.ts` and re-running `npm run seed`. The CTA engine and
+market-blurb features silently depended on data the artist couldn't edit.
+
+**Done:**
+- **No schema changes** — every table already existed. Purely new DB helpers + server
+  actions + pages + nav links.
+- `app/(app)/_lib/format.ts` — added `PRODUCT_TYPES`, `MARKET_STATUSES`,
+  `WEB_SEARCH_CADENCES` as the single source of truth (mirrors the schema CHECK constraints),
+  shared by the client dropdowns and the server-action validation.
+- `lib/db/index.ts` — added `getAllProducts`, `updateProduct`, `getAllMarkets`,
+  `updateMarket`, `deleteMarket`, `updateBrandVoice` (mirror the existing
+  `updateSettings`/`getActiveProducts` style). Agent-owned fields are never written here.
+- `app/actions.ts` — added `createProduct`/`updateProductAction`,
+  `createMarket`/`updateMarketAction`/`deleteMarketAction`, `saveSettings`, `saveBrandVoice`.
+  Each validates enums + the `hashtagCountMin <= hashtagCountMax` CHECK **before** writing
+  (clean error, not a raw 22P02), trims/coerces inputs, and `revalidatePath`s. Never accepts
+  `products.lastPromotedAt` or `markets.draftApplication` (agent-owned, shown read-only).
+- New pages (RSC, auto-guarded by `proxy.ts`): `app/(app)/products/page.tsx`,
+  `app/(app)/markets/page.tsx`, `app/(app)/settings/page.tsx` (settings **and** brand voice
+  in two cards). New client forms in `app/(app)/_components/`:
+  `ProductForm`, `MarketForm`, `SettingsForm`, `BrandVoiceForm` (mirror
+  `NumbersForm`/`SubscriberForm`: `useState` + `onSubmit` + `router.refresh()`).
+- `app/(app)/_components/NavLinks.tsx` — added 🛍 Products / 🏪 Markets / ⚙️ Settings links.
+- The `/settings` page reserves a spot (comment only) for the "Connect Instagram" button
+  that `AUTOMATION_PLAN.md` Item #1 will add.
+
+**Verify:** `npx tsc --noEmit` clean and `npm run build` green (the three new routes render
+as server-rendered-on-demand behind the Proxy middleware). End-to-end UI checks per the
+plan's verification section: add/edit/deactivate a product → `getActiveProducts()` reflects
+it for the agents; add a market with a near deadline → Distribution drafts a read-only blurb;
+edit `weeklyMix`/`reelsRequired` → next Strategy run honors it; `hashtagCountMin >
+hashtagCountMax` is blocked with a clear message (no DB exception).
+
+**Ops:** no new env vars and no new cron → `vercel.json`, `.env.local`, Vercel, and
+`DEPLOY.md` unchanged. Next automation items: #1 Instagram stats auto-pull (depends on this
+settings page), then #3 shop sync / #4 ESP sync (both blocked on platform/ESP choice).

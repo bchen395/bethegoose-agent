@@ -106,6 +106,14 @@ export async function getBrandVoice(): Promise<BrandVoice | null> {
   return rows[0] ?? null;
 }
 
+/** Patch the single brand_voice row (id = 1) — Item #2 settings CRUD. */
+export async function updateBrandVoice(
+  fields: Partial<typeof brandVoice.$inferInsert>,
+): Promise<void> {
+  if (Object.keys(fields).length === 0) return;
+  await db.update(brandVoice).set(fields).where(eq(brandVoice.id, 1));
+}
+
 // --- posts ------------------------------------------------------------------
 
 type PostInsert = typeof posts.$inferInsert;
@@ -309,6 +317,20 @@ export async function getProduct(productId: number): Promise<Product | null> {
   return rows[0] ?? null;
 }
 
+/** All products (active + inactive), stable order — Item #2 products CRUD. */
+export async function getAllProducts(): Promise<Product[]> {
+  return db.select().from(products).orderBy(asc(products.id));
+}
+
+/** Patch a product (name/url/type/active) — never touches last_promoted_at. */
+export async function updateProduct(
+  productId: number,
+  fields: Partial<typeof products.$inferInsert>,
+): Promise<void> {
+  if (Object.keys(fields).length === 0) return;
+  await db.update(products).set(fields).where(eq(products.id, productId));
+}
+
 /** Active products, least-recently-promoted first (NULL = never -> first). */
 export async function getActiveProducts(): Promise<Product[]> {
   return db
@@ -336,6 +358,28 @@ export async function insertMarket(fields: typeof markets.$inferInsert): Promise
 export async function getMarket(marketId: number): Promise<Market | null> {
   const rows = await db.select().from(markets).where(eq(markets.id, marketId)).limit(1);
   return rows[0] ?? null;
+}
+
+/** All markets, soonest event first (NULL event_date last) — Item #2 markets CRUD. */
+export async function getAllMarkets(): Promise<Market[]> {
+  return db
+    .select()
+    .from(markets)
+    .orderBy(sql`${markets.eventDate} asc nulls last`, asc(markets.id));
+}
+
+/** Patch a market — never touches the agent-written draft_application. */
+export async function updateMarket(
+  marketId: number,
+  fields: Partial<typeof markets.$inferInsert>,
+): Promise<void> {
+  if (Object.keys(fields).length === 0) return;
+  await db.update(markets).set(fields).where(eq(markets.id, marketId));
+}
+
+/** Hard-delete a market. Safe: nothing references markets.id by FK. */
+export async function deleteMarket(marketId: number): Promise<void> {
+  await db.delete(markets).where(eq(markets.id, marketId));
 }
 
 /** Markets whose event_date falls within the next N days (Strategy Agent). */
