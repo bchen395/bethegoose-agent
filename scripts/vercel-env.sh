@@ -25,7 +25,7 @@ if ! command -v vercel >/dev/null 2>&1; then
   exit 1
 fi
 
-# The 7 vars the deployed app needs. (No DIRECT_URL.)
+# The 8 vars the deployed app needs. (No DIRECT_URL.)
 VARS=(
   DATABASE_URL
   SUPABASE_SERVICE_ROLE_KEY
@@ -34,6 +34,7 @@ VARS=(
   NEXT_PUBLIC_SUPABASE_URL
   NEXT_PUBLIC_SUPABASE_ANON_KEY
   ALLOWED_EMAILS
+  STRIPE_SECRET_KEY
 )
 
 # Pull a single var's value out of .env.local (everything after the first '=').

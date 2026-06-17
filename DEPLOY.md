@@ -50,7 +50,7 @@ vercel link            # (you) pick scope + project name
 
 ## 3. Set environment variables (production scope)
 
-Seven vars go to Vercel. **`DIRECT_URL` is intentionally excluded** — it's only for local
+Eight vars go to Vercel. **`DIRECT_URL` is intentionally excluded** — it's only for local
 `db:push`. The helper reads `.env.local` and pipes each value to `vercel env add`, so no
 secret is printed.
 
@@ -60,7 +60,13 @@ bash scripts/vercel-env.sh production
 
 Vars set: `DATABASE_URL` (pooled 6543), `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`,
 `ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`ALLOWED_EMAILS`.
+`ALLOWED_EMAILS`, `STRIPE_SECRET_KEY`.
+
+> **`STRIPE_SECRET_KEY` (Item #3 shop sync)** — create a **restricted, read-only** key in the
+> Stripe Dashboard (*Developers → API keys → Create restricted key*) with **Read** permission on
+> **Products** (and **Prices**) and nothing else. The daily `shop-sync` cron only lists the
+> catalog; it never writes to Stripe. Sync is fail-soft: a missing/invalid key just no-ops and
+> leaves the manual product CRUD working.
 
 > Preview deployments won't have these secrets (production scope only) — that's
 > deliberate: previews can't spend API budget or touch the prod DB. Add `preview` scope

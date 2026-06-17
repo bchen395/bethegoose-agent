@@ -187,6 +187,7 @@ function fallbackProduct(ctaType: string, products: Product[]): Product | null {
 function resolveCta(
   modelOut: DraftOut,
   products: Product[],
+  shopUrl: string | null,
 ): { ctaType: string; suggestion: string | null; productId: number | null; ctaUrl: string | null } {
   let ctaType: string = modelOut.cta_type;
   if (!VALID_CTA_TYPES.includes(ctaType as (typeof VALID_CTA_TYPES)[number])) ctaType = "none";
@@ -197,8 +198,18 @@ function resolveCta(
     const product =
       (modelOut.product_id != null ? byId.get(modelOut.product_id) : undefined) ??
       fallbackProduct(ctaType, products);
-    if (product) return { ctaType, suggestion, productId: product.id, ctaUrl: product.url ?? null };
-    return { ctaType, suggestion, productId: null, ctaUrl: null };
+    // Shop CTAs fall back to the global "link in bio" shop URL when the chosen
+    // product has no per-product url (Stripe-synced products often won't).
+    const shopFallback = ctaType === "shop" ? shopUrl : null;
+    if (product) {
+      return {
+        ctaType,
+        suggestion,
+        productId: product.id,
+        ctaUrl: product.url ?? shopFallback,
+      };
+    }
+    return { ctaType, suggestion, productId: null, ctaUrl: shopFallback };
   }
   return { ctaType, suggestion, productId: null, ctaUrl: null }; // market / none carry no product
 }
@@ -270,7 +281,7 @@ export async function generateDraft(slotId: number, artKey?: string): Promise<Ge
   });
 
   const hashtags = normalizeHashtags(result.hashtags, hmax);
-  const { ctaType, suggestion, productId, ctaUrl } = resolveCta(result, products);
+  const { ctaType, suggestion, productId, ctaUrl } = resolveCta(result, products, settings.shopUrl);
 
   const fmt = slot.format;
   let reelScript: string | null = (result.reel_script || "").trim();
