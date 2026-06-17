@@ -11,7 +11,7 @@
  */
 
 import { DateTime } from "luxon";
-import { and, asc, desc, eq, gte, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -346,6 +346,38 @@ export async function setProductPromoted(productId: number, when?: string): Prom
     .update(products)
     .set({ lastPromotedAt: when ?? (await nowIso()) })
     .where(eq(products.id, productId));
+}
+
+/** Look up a product by its Stripe id — the upsert key for the Item #3 shop sync. */
+export async function getProductByStripeId(stripeProductId: string): Promise<Product | null> {
+  const rows = await db
+    .select()
+    .from(products)
+    .where(eq(products.stripeProductId, stripeProductId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Deactivate Stripe-origin products whose id is no longer in `stripeProductIds`
+ * (archived/deleted upstream). Only touches rows with a non-null stripe_product_id,
+ * so hand-created CRUD products are never disturbed. Returns the count deactivated.
+ *
+ * MUST only be called after a *confirmed-good* fetch from Stripe — never on a failed
+ * sync, or it would wrongly retire the whole catalog.
+ */
+export async function deactivateStripeProductsNotIn(stripeProductIds: string[]): Promise<number> {
+  const onlyStripe = isNotNull(products.stripeProductId);
+  const where =
+    stripeProductIds.length === 0
+      ? onlyStripe
+      : and(onlyStripe, notInArray(products.stripeProductId, stripeProductIds));
+  const rows = await db
+    .update(products)
+    .set({ active: false })
+    .where(and(where, eq(products.active, true)))
+    .returning({ id: products.id });
+  return rows.length;
 }
 
 // --- markets ----------------------------------------------------------------

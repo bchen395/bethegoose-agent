@@ -268,6 +268,7 @@ export async function saveSettings(data: {
   webSearchCadence: string;
   monthlyBudgetUsd: string;
   captionStartersEnabled: boolean;
+  shopUrl: string;
 }): Promise<void> {
   const timezone = data.timezone.trim();
   if (!timezone) throw new Error("Timezone is required.");
@@ -290,6 +291,10 @@ export async function saveSettings(data: {
   if (!Number.isFinite(budget) || budget < 0) {
     throw new Error("Monthly budget must be a non-negative number.");
   }
+  const shopUrl = data.shopUrl.trim();
+  if (shopUrl && !/^https?:\/\//i.test(shopUrl)) {
+    throw new Error("Shop URL must start with http:// or https://");
+  }
   await updateSettings({
     timezone,
     hashtagCountMin,
@@ -304,6 +309,7 @@ export async function saveSettings(data: {
     webSearchCadence: data.webSearchCadence,
     monthlyBudgetUsd: String(budget),
     captionStartersEnabled: Boolean(data.captionStartersEnabled),
+    shopUrl: shopUrl || null,
   });
   revalidatePath("/settings");
 }

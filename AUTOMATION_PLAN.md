@@ -260,28 +260,44 @@ blurb on the next approval; edit `weekly_mix` → the next Strategy run honors i
 
 ---
 
-# Item #3 — Shop product sync (optional, once platform is known)
+# Item #3 — Shop product sync via Stripe ✅ (2026-06-17)
 
 **Problem.** Even with #2's CRUD, products drift out of date as the shop changes.
 
-**Solution.** Pull active listings from the shop's free API into the `products` table.
-**Decision needed:** which platform is the shop on? Outline per platform:
+**Platform: Stripe.** The artist confirmed the shop's products live in **Stripe's own catalog**
+(Dashboard / Payment Links / Checkout), `type` is set per product as **`metadata.type`**, and CTA
+links resolve to a single **"link in bio"** shop URL (Instagram isn't clickable per-post). Stripe
+is the simplest of the platforms originally considered here: a single **restricted, read-only API
+key** (no OAuth callback), the official `stripe` Node SDK, and catalog reads are free (Stripe bills
+per transaction only).
 
-- **Etsy** (Open API v3): register an app (https://www.etsy.com/developers), OAuth2 for read
-  scope, `GET /v3/application/shops/{shop_id}/listings/active` → map each listing to a product
-  (`name`=title, `url`=listing url, `type` inferred from taxonomy/tags, `active`=true). Store
-  `etsy_listing_id` on products to upsert idempotently.
-- **Shopify**: a custom-app Admin API token, `GET /admin/api/<ver>/products.json` → same mapping.
-- **Square / Big Cartel / Gumroad**: each has a products/items endpoint; same upsert pattern.
+> Earlier draft outlined Etsy / Shopify / Square / Big Cartel / Gumroad. Superseded — see git
+> history if the shop ever migrates.
 
-Implement as `lib/shop.ts` + a `app/api/cron/shop-sync/route.ts` (daily, `CRON_SECRET`-guarded)
-that upserts by external id and deactivates products no longer present. Keep manual CRUD (#2) as
-the source of truth for `type` overrides.
+**Solution (built).**
+- `lib/shop.ts` — server-only Stripe reader. `listActiveStripeProducts()` auto-paginates
+  `stripe.products.list({ active: true })` → `{ stripeProductId, name, url, type, active }`,
+  validating `metadata.type` against the four product types. **Fail-soft:** missing key / network /
+  API error returns `null` (mirrors the `logUsage` catch-and-ignore in `lib/claude.ts`).
+- Schema: `products.stripe_product_id` (text, unique index, nullable — the upsert key and
+  "originated from Stripe" marker; manual products keep it null) and `settings.shop_url` (the
+  link-in-bio fallback). Applied with `npm run db:push`.
+- DB helpers (`lib/db/index.ts`): `getProductByStripeId`, `deactivateStripeProductsNotIn`
+  (only touches non-null `stripe_product_id` rows; never the manual CRUD products).
+- `app/api/cron/shop-sync/route.ts` (GET, `CRON_SECRET`-guarded, `maxDuration = 300`; daily at
+  `0 2 * * *` in `vercel.json`): upserts by `stripe_product_id` (`metadata.type` is the source of
+  truth when valid, else the row's existing type is preserved on update / defaults to `print` on
+  insert), then deactivates Stripe-origin products no longer active in Stripe. **Never** touches
+  `last_promoted_at`. Skips deactivation entirely on a failed fetch.
+- CTA URL: `resolveCta` (`lib/agents/content.ts`) now falls back to `settings.shop_url` for `shop`
+  CTAs when a product has no `url`. Editable on the Settings page (`SettingsForm` + `saveSettings`).
+- Env: `STRIPE_SECRET_KEY` added to `.env.local`, `scripts/vercel-env.sh`, and `DEPLOY.md` §3.
 
-**Verify:** add/remove a listing in the shop → after the cron, `products` reflects it; CTAs only
-point at in-stock items.
+**Verify:** add/remove (archive) a product in Stripe → after the cron, `products` reflects it
+(active items only); a Stripe product with no `url` gets the `shop_url` link in the Distribution
+checklist; a bad/empty key leaves the table intact and the manual CRUD working.
 
-**Effort:** ~1 day per platform once the platform is confirmed. **Blocked on:** which shop platform?
+**Effort:** ~1 day (no OAuth, single key).
 
 ---
 
@@ -323,7 +339,7 @@ offline (keep manual), but the email channel likely lives on a real ESP.
    provides the settings page that hosts the "Connect Instagram" button. ~1 day.
 2. **Item #1 — Instagram stats auto-pull.** The headline win; depends on the Meta app + the
    settings page from #2. ~1–2 days.
-3. **Item #3 — Shop product sync.** *Blocked on platform choice.* ~1 day.
+3. **Item #3 — Shop product sync (Stripe).** ✅ Done 2026-06-17. ~1 day.
 4. **Item #4 — Email-subscriber sync.** *Blocked on ESP choice.* ~half a day.
 
 After each: `npx tsc --noEmit` + `npm run build` green, update `PROGRESS.md`, add new env vars to
@@ -331,7 +347,7 @@ After each: `npx tsc --noEmit` + `npm run build` green, update `PROGRESS.md`, ad
 
 ## Open questions to confirm with the artist before building #3/#4
 
-- Which platform is the **online shop** on? (Etsy / Shopify / Square / Big Cartel / Gumroad / other)
+- ~~Which platform is the **online shop** on?~~ **Answered: Stripe** (Item #3 built 2026-06-17).
 - Which **email list / ESP**, if any? (Buttondown / Kit / Mailchimp / MailerLite / none)
 - Is the **snail-mail subscription** sold as a recurring product in the shop, or tracked offline?
 - Confirm she'll convert the IG account to a **Creator** account (required for Item #1).

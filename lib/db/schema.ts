@@ -26,6 +26,7 @@ import {
   numeric,
   pgTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // --- settings: single row (id = 1) -----------------------------------------
@@ -50,6 +51,10 @@ export const settings = pgTable(
     captionStartersEnabled: boolean("caption_starters_enabled")
       .notNull()
       .default(false),
+
+    // --- Item #3 (shop sync): the canonical "link in bio" shop URL, used as the
+    // CTA fallback when a synced product has no per-product url. Nullable. -----
+    shopUrl: text("shop_url"),
   },
   (t) => [
     check("settings_id_check", sql`${t.id} = 1`),
@@ -71,10 +76,16 @@ export const products = pgTable(
     type: text("type").notNull(),
     active: boolean("active").notNull().default(true),
     lastPromotedAt: text("last_promoted_at"), // set = now() on approval
+
+    // --- Item #3 (shop sync): external id of the Stripe product this row mirrors.
+    // NULL for products created by hand in the CRUD; the sync only ever touches
+    // rows where this is set, so manual products are never disturbed. ----------
+    stripeProductId: text("stripe_product_id"),
   },
   (t) => [
     check("products_type_check", sql`${t.type} in ('print', 'sticker', 'craft', 'snail_mail')`),
     index("idx_products_promoted").on(t.lastPromotedAt),
+    uniqueIndex("idx_products_stripe_id").on(t.stripeProductId),
   ],
 );
 

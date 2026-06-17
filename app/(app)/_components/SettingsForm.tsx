@@ -23,6 +23,7 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
   const [captionStartersEnabled, setCaptionStartersEnabled] = useState(
     settings.captionStartersEnabled,
   );
+  const [shopUrl, setShopUrl] = useState(settings.shopUrl ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
@@ -47,6 +48,7 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
         webSearchCadence,
         monthlyBudgetUsd,
         captionStartersEnabled,
+        shopUrl,
       });
       setOk("Settings saved.");
       router.refresh();
@@ -172,6 +174,21 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
           />
         </label>
       </div>
+
+      <label style={{ display: "block", marginTop: 12 }}>
+        Shop URL (your &ldquo;link in bio&rdquo;)
+        <input
+          className="field"
+          type="url"
+          inputMode="url"
+          placeholder="https://…"
+          value={shopUrl}
+          onChange={(e) => setShopUrl(e.target.value)}
+        />
+        <span className="muted" style={{ fontSize: 12 }}>
+          Used as the shop CTA link when a synced product has no page of its own.
+        </span>
+      </label>
 
       <label className="row" style={{ gap: 6, marginTop: 12 }}>
         <input

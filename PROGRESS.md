@@ -588,3 +588,50 @@ hashtagCountMax` is blocked with a clear message (no DB exception).
 **Ops:** no new env vars and no new cron → `vercel.json`, `.env.local`, Vercel, and
 `DEPLOY.md` unchanged. Next automation items: #1 Instagram stats auto-pull (depends on this
 settings page), then #3 shop sync / #4 ESP sync (both blocked on platform/ESP choice).
+
+---
+
+## Hosted Next.js app — `AUTOMATION_PLAN.md` Item #3: Stripe shop sync ✅ (2026-06-17)
+
+**Problem.** Even with Item #2's CRUD, products drift as the real shop changes. The artist
+confirmed the shop runs on **Stripe** (products in Stripe's own catalog), `type` is set as each
+product's **`metadata.type`**, and CTA links resolve to a single **"link in bio"** shop URL.
+
+**Done:**
+- **Dependency + env:** added `stripe` (`^22.2.1`). New `STRIPE_SECRET_KEY` — a **restricted,
+  read-only** key scoped to Products+Prices — added to `.env.local` (placeholder), the
+  `scripts/vercel-env.sh` VARS list (now 8 vars), and documented in `DEPLOY.md` §3. The sync only
+  ever READS Stripe.
+- **Schema (`lib/db/schema.ts`, applied via `npm run db:push`):** `products.stripe_product_id`
+  (text, **unique index**, nullable — the upsert key; null = hand-created, never touched by sync)
+  and `settings.shop_url` (text, nullable — the link-in-bio CTA fallback).
+- **DB helpers (`lib/db/index.ts`):** `getProductByStripeId` and `deactivateStripeProductsNotIn`
+  (filters on non-null `stripe_product_id` so manual CRUD products are never disturbed; returns
+  the count deactivated).
+- **`lib/shop.ts` (new, server-only — mirrors `lib/claude.ts`):** `listActiveStripeProducts()`
+  auto-paginates `stripe.products.list({ active: true })`, validates `metadata.type` against the
+  four product types, and is **fail-soft** (missing key / network / API error → `null`, never
+  throws into the route).
+- **`app/api/cron/shop-sync/route.ts` (new):** mirrors `weekly-strategy` (GET, `CRON_SECRET`
+  Bearer guard, `maxDuration = 300`). Upserts by `stripe_product_id` — `metadata.type` is the
+  source of truth when valid, else the existing type is preserved on update / defaults to `print`
+  on insert — then deactivates Stripe-origin products no longer present. **Never** touches
+  `last_promoted_at`; **skips deactivation entirely on a failed fetch** so a Stripe outage can't
+  retire the catalog. Returns `{ ok, created, updated, deactivated }`. Registered daily
+  (`0 2 * * *`) in `vercel.json`.
+- **CTA fallback:** `resolveCta` (`lib/agents/content.ts`) now takes `settings.shopUrl` and uses it
+  for `shop` CTAs when the chosen product has no `url`. Editable via a new "Shop URL" field on the
+  Settings page (`SettingsForm` + `saveSettings`, which validates the `http(s)://` prefix).
+
+**Verify:** `npm run db:push` applied cleanly; `npm run build` green (the new
+`/api/cron/shop-sync` route lists as server-rendered-on-demand). End-to-end (run with a Stripe
+**test-mode** restricted key): create products in Stripe with `metadata.type` set →
+`curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/shop-sync` returns
+counts and the `/products` screen lists them with correct `type`; archive one in Stripe → re-run →
+that row flips `active=false` while hand-created products are untouched; empty/invalid key →
+`{ ok:false }` and the table is left intact (manual CRUD keeps working).
+
+**Ops:** **new env var `STRIPE_SECRET_KEY`** — add to `.env.local` (the placeholder is in place)
+and push to Vercel via `bash scripts/vercel-env.sh production`. New cron registered in
+`vercel.json`. Next automation item: #4 ESP sync (blocked on ESP choice). Item #1 (Instagram
+stats) deferred per the artist.
