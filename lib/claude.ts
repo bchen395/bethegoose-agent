@@ -1,8 +1,9 @@
 /**
- * lib/claude.ts — shared Claude API access for the three agents.
+ * lib/claude.ts — shared Claude API access.
  *
- * Faithful port of utils/claude.py. Every agent talks to the model through this
- * module so that:
+ * Two callers go through here: the weekly Strategy Agent (lib/agents/strategy.ts)
+ * and the on-demand "reuse your hits" helper (app/api/insights/reuse). Both use
+ * this module so that:
  *   - the client is created once (lazily) from a SERVER-ONLY env var,
  *   - structured output is forced via tool-use and validated with zod, with one
  *     retry, then raised as AgentError on final failure (the caller writes
@@ -20,19 +21,21 @@ import { z } from "zod";
 
 import { insertUsageLog } from "./db";
 
-// --- Models (unchanged from SPEC § Stack decisions) -------------------------
+// --- Models -----------------------------------------------------------------
 
-export const STRATEGY_MODEL = "claude-sonnet-4-6"; // editorial judgment
-export const CONTENT_MODEL = "claude-haiku-4-5-20251001"; // hashtags / hooks / CTA
-export const DISTRIBUTION_MODEL = "claude-haiku-4-5-20251001"; // logic + formatting
+export const STRATEGY_MODEL = "claude-sonnet-4-6"; // weekly plan — editorial judgment
+export const CONTENT_MODEL = "claude-haiku-4-5-20251001"; // on-demand "reuse your hits" ideas
 
 // Each web search is billable; the Strategy Agent runs 2-3 per run.
 export const MAX_WEB_SEARCHES = 3;
 
 // --- Cost meter (FEATURES.md §7) --------------------------------------------
 
-/** Which agent a model call belongs to (matches the usage_log.agent CHECK). */
-export type UsageAgent = "strategy" | "content" | "distribution";
+/**
+ * Which caller a model call belongs to (a subset of the usage_log.agent CHECK,
+ * which still permits the retired 'distribution' value for legacy rows).
+ */
+export type UsageAgent = "strategy" | "content";
 
 /**
  * ⚠ Anthropic prices — confirmed 2026-06-13 (claude-api skill + platform docs).
@@ -108,13 +111,6 @@ async function logUsage(
 // Current web-search tool version (server-side; searches + synthesizes in one turn).
 const WEB_SEARCH_TOOL = "web_search_20260209";
 
-const SUPPORTED_IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-]);
-
 let _client: Anthropic | null = null;
 
 /**
@@ -139,31 +135,6 @@ export function getClient(): Anthropic {
     _client = new Anthropic({ apiKey: key });
   }
   return _client;
-}
-
-// --- Content helpers --------------------------------------------------------
-
-/**
- * Build a base64 image content block from raw bytes (fetched from Storage), so
- * the model's hashtags and reel hooks reference what's really in the post.
- */
-export function imageBlock(bytes: Buffer, mediaType: string): Anthropic.ImageBlockParam {
-  let mt = mediaType;
-  if (mt === "image/jpg") mt = "image/jpeg";
-  if (!SUPPORTED_IMAGE_TYPES.has(mt)) {
-    throw new AgentError(
-      `Unsupported image type: ${mediaType || "unknown"} ` +
-        `(supported: ${[...SUPPORTED_IMAGE_TYPES].join(", ")})`,
-    );
-  }
-  return {
-    type: "image",
-    source: {
-      type: "base64",
-      media_type: mt as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
-      data: bytes.toString("base64"),
-    },
-  };
 }
 
 // --- JSON parsing (fallback for string-typed tool arguments) ----------------

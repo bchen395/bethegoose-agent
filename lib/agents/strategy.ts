@@ -18,6 +18,7 @@ import {
   getRecentPosts,
   getSettings,
   getUpcomingMarkets,
+  getWeekRecap,
   nowIso,
   replaceWeekPlan,
   todayIso,
@@ -25,6 +26,7 @@ import {
   type Market,
   type Post,
   type Product,
+  type RecapRow,
   type Settings,
   type SlotInput,
 } from "../db";
@@ -130,6 +132,18 @@ function signals(posts: Post[], today: DateTime) {
   };
 }
 
+/** Compact prior-week plan→actual for the prompt (empty array = no prior plan). */
+function summarizeRecap(recap: RecapRow[]) {
+  return recap.map((r) => ({
+    format: r.slot.format,
+    theme: r.slot.theme,
+    posted: r.post != null,
+    saves: r.post?.saves ?? null,
+    shares: r.post?.shares ?? null,
+    score: r.score,
+  }));
+}
+
 // --- Prompts ----------------------------------------------------------------
 
 function researchPrompt(today: DateTime): string {
@@ -177,6 +191,12 @@ beats any article claiming "reels win." Treat \`web_findings\` as a light supple
 for seasonal hooks and obviously fresh-or-stale hashtags only — never let it override \
 what her own numbers show.
 
+LEARN FROM LAST WEEK. \`last_week_recap\` lists what you planned for the prior week and \
+whether each slot actually got posted (with saves/shares/score for the ones that did). \
+Use it: if a planned format keeps going unposted, she likely can't make it that week — \
+ease off it; lean toward formats and themes that both got posted AND scored well. An \
+empty array means there was no prior plan — ignore it.
+
 FORMAT MIX — target for a FULL week (from settings.weekly_mix): ${mixTarget}.
 This is the relative EMPHASIS, not a literal count: she posts only ~3-4x/week, so honor the \
 proportions, don't try to hit the raw numbers.
@@ -218,9 +238,11 @@ function context(
   markets: Market[],
   products: Product[],
   web: { text: string; queries: string[] },
+  recap: RecapRow[],
 ) {
   return {
     today: today.toISODate(),
+    last_week_recap: summarizeRecap(recap),
     target_week: {
       week_start: weekStart.toISODate(),
       week_end: weekEnd.toISODate(),
@@ -431,6 +453,8 @@ export async function runWeeklyPlan(weekStart?: string): Promise<WeeklyPlanResul
   const posts = await getRecentPosts(30);
   const markets = await getUpcomingMarkets(45);
   const products = await getActiveProducts();
+  // Plan→actual loop: last week's plan + what actually got posted, to adapt from.
+  const recap = await getWeekRecap(ws.minus({ days: 7 }).toISODate()!);
 
   // FEATURES.md §6: web search is now cadence-gated (default 'monthly').
   const { search: doSearch, skipReason } = decideWebSearch(settings, today);
@@ -449,7 +473,7 @@ export async function runWeeklyPlan(weekStart?: string): Promise<WeeklyPlanResul
     await updateSettings({ lastWebSearchAt: await nowIso() });
   }
 
-  const ctx = context(today, ws, we, allowedDates, settings, posts, markets, products, web);
+  const ctx = context(today, ws, we, allowedDates, settings, posts, markets, products, web, recap);
   const result = await callJson({
     model: STRATEGY_MODEL,
     system: systemPrompt(settings),

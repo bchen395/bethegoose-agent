@@ -7,7 +7,9 @@
  * Instagram is the SOURCE of posted rows: there's no in-app draft/caption to match
  * against, so the sync ingests recent media directly as `posts` (status='posted',
  * real published_at, caption, format, permalink), then pulls per-media insights
- * into the five metric columns and snapshots the follower count.
+ * into the five metric columns and snapshots the follower count. It then closes
+ * the plan→actual loop: each newly posted row is matched back to the planned
+ * calendar slot it fulfilled (same week + format, nearest day).
  *
  * Fail-soft: not connected / token / API errors skip the affected step and return
  * 200 — the DB is never left half-written and the manual engagement form keeps
@@ -15,14 +17,18 @@
  * with the secret header to verify.
  */
 
+import { DateTime } from "luxon";
 import { NextResponse } from "next/server";
 
 import {
   getInstagramAccount,
   getPostByIgMediaId,
   getPostsForStatsSync,
+  getUnlinkedSlotsForWeek,
+  getUnmatchedPostedPosts,
   insertFollowerSnapshot,
   insertPost,
+  linkSlotToPost,
   nowIso,
   updateInstagramAccount,
   updatePost,
@@ -86,6 +92,31 @@ export async function GET(request: Request) {
     statsSynced++;
   }
 
+  // 2b) Close the plan→actual loop: link each posted row to the planned slot it
+  // fulfilled — same week + matching format, nearest planned day. Conservative:
+  // no format match in that week → no link (a genuine deviation, left unmatched).
+  // Slots are re-queried per post, so one slot is never claimed twice.
+  let matched = 0;
+  for (const post of await getUnmatchedPostedPosts(28)) {
+    if (!post.publishedAt || !post.format) continue;
+    const pub = DateTime.fromISO(post.publishedAt);
+    if (!pub.isValid) continue;
+    const weekStart = pub.minus({ days: pub.weekday - 1 }).toISODate();
+    if (!weekStart) continue;
+    const pubDay = pub.startOf("day");
+    const candidates = (await getUnlinkedSlotsForWeek(weekStart)).filter(
+      (s) => s.format === post.format,
+    );
+    if (candidates.length === 0) continue;
+    candidates.sort(
+      (a, b) =>
+        Math.abs(DateTime.fromISO(a.slotDate).diff(pubDay, "days").days) -
+        Math.abs(DateTime.fromISO(b.slotDate).diff(pubDay, "days").days),
+    );
+    await linkSlotToPost(candidates[0].id, post.id);
+    matched++;
+  }
+
   // 3) Follower count + snapshot.
   let followers: number | null = null;
   const profile = await getAccount(token);
@@ -99,5 +130,5 @@ export async function GET(request: Request) {
     if (profile.followersCount != null) await insertFollowerSnapshot(profile.followersCount);
   }
 
-  return NextResponse.json({ ok: true, ingested, statsSynced, followers });
+  return NextResponse.json({ ok: true, ingested, statsSynced, matched, followers });
 }

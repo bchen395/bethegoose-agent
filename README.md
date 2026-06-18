@@ -15,8 +15,8 @@ suggests *what kind of post* to make each day, then learns from how each post pe
 > **Stack:** this is a hosted **Next.js (App Router) + TypeScript** app on **Vercel**,
 > with **Supabase** Postgres (via Drizzle) + magic-link auth, the **Instagram API** for
 > post metrics, and **Stripe** for shop-product sync. It was ported from an earlier local
-> Python/Streamlit/SQLite prototype — see [Migration & history](#migration--history). The
-> Python code is retained in-repo as a fallback only; it is **not** the running system.
+> Python/Streamlit/SQLite prototype, since removed — see
+> [Migration & history](#migration--history).
 
 ---
 
@@ -126,11 +126,7 @@ bethegoose-agent/
 │   └── actions.ts             # server actions (numbers fallback, subscribers, CRUD…)
 ├── scripts/
 │   └── seed.ts                # seed settings + brand_voice (npm run seed)
-└── db/init.sql                # legacy SQLite schema (pre-migration reference)
-
-# Legacy pre-migration fallback (NOT the running system — see Migration & history):
-#   agents/*.py · utils/*.py · ui/app.py · cron/weekly_strategy.sh
-#   scripts/seed_*.py · requirements.txt
+└── migrations/                # hand-applied SQL deltas (schema otherwise via db:push)
 ```
 
 ---
@@ -224,7 +220,7 @@ row `id = 1`):
 
 - **`settings`** — timezone, hashtag count range, default post time, `reels_required`,
   and the feature tunables: `weekly_mix` (§5), `web_search_cadence` + `last_web_search_at`
-  (§6), `monthly_budget_usd` (§7), `caption_starters_enabled` (§9, default `false`).
+  (§6), `monthly_budget_usd` (§7).
 - **`brand_voice`** — artist name, tone, example captions, phrases to avoid, snail-mail
   pitch.
 
@@ -275,7 +271,7 @@ The Instagram and Stripe syncs are free. The §7 cost meter logs every model cal
 - **`SPEC.md`** — the original build spec for the Python prototype.
 - **`PROGRESS.md`** — the per-step build log for that original prototype.
 
-The Python files (`agents/*.py`, `utils/`, `ui/app.py`, `cron/weekly_strategy.sh`,
-`scripts/seed_*.py`, `requirements.txt`, `db/init.sql`) are kept as a **legacy fallback**
-and reference. They are not deployed and not the running system; per MIGRATION.md the plan
-is to remove them once the hosted app is fully trusted.
+The original Python prototype (`agents/*.py`, `utils/`, `ui/app.py`,
+`cron/weekly_strategy.sh`, `scripts/seed_*.py`, `requirements.txt`, `db/init.sql`) has been
+**removed** now that the hosted app is trusted — see git history (and the docs above) if you
+need to refer back to it.

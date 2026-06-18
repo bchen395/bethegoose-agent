@@ -35,7 +35,6 @@ const SETTINGS = {
   webSearchCadence: "monthly",
   lastWebSearchAt: null as string | null,
   monthlyBudgetUsd: "5", // ⚠
-  captionStartersEnabled: false,
 };
 
 // --- brand_voice (verbatim port of seed_brand_voice.py) ---------------------

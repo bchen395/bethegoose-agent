@@ -65,12 +65,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <li key={m.id}>
                   <strong>{m.name}</strong>
                   {m.applicationDeadline ? ` — applications due ${m.applicationDeadline}` : ""}
-                  {m.draftApplication ? (
-                    <details style={{ marginTop: 4 }}>
-                      <summary>Draft application</summary>
-                      <p style={{ whiteSpace: "pre-wrap" }}>{m.draftApplication}</p>
-                    </details>
-                  ) : null}
                 </li>
               ))}
             </ul>

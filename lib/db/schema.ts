@@ -48,9 +48,6 @@ export const settings = pgTable(
     webSearchCadence: text("web_search_cadence").notNull().default("monthly"),
     lastWebSearchAt: text("last_web_search_at"), // ISO, nullable
     monthlyBudgetUsd: numeric("monthly_budget_usd").notNull().default("5"),
-    captionStartersEnabled: boolean("caption_starters_enabled")
-      .notNull()
-      .default(false),
 
     // --- Item #3 (shop sync): the canonical "link in bio" shop URL, used as the
     // CTA fallback when a synced product has no per-product url. Nullable. -----
@@ -98,16 +95,11 @@ export const posts = pgTable(
     postedAt: text("posted_at"),
     status: text("status").notNull().default("draft"),
     format: text("format"),
-    artFilename: text("art_filename"), // Supabase Storage object key
-    caption: text("caption"), // human-written; null until review
-    hashtags: jsonb("hashtags").$type<string[]>(),
+    caption: text("caption"), // the post's real caption, from the Instagram sync
+    // ctaType: the CTA the post drove, tagged by hand on /engagement (one tap).
+    // Powers subscriber attribution (§4) and the Strategy Agent's CTA-rotation cues.
     ctaType: text("cta_type"),
     ctaUrl: text("cta_url"),
-    ctaSuggestion: text("cta_suggestion"),
-    productId: bigint("product_id", { mode: "number" }).references(() => products.id),
-    reelScript: text("reel_script"),
-    agentReasoning: text("agent_reasoning"),
-    postingChecklist: text("posting_checklist"),
     likes: integer("likes"),
     comments: integer("comments"),
     reach: integer("reach"),
@@ -204,7 +196,6 @@ export const markets = pgTable(
     eventDate: text("event_date"),
     applicationDeadline: text("application_deadline"),
     status: text("status"),
-    draftApplication: text("draft_application"), // agent-written blurb
     notes: text("notes"), // human notes only
   },
   (t) => [

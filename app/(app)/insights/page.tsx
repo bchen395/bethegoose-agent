@@ -9,7 +9,7 @@ import {
   getTopPosts,
 } from "@/lib/db";
 import ReuseHitsButton from "../_components/ReuseHitsButton";
-import { FORMAT_BADGE, badge } from "../_lib/format";
+import { CTA_LABELS, FORMAT_BADGE, badge } from "../_lib/format";
 
 const WINDOW = INSIGHTS_WINDOW_DAYS;
 
@@ -46,13 +46,7 @@ function Sparkline({ points }: { points: number[] }) {
   );
 }
 
-const CTA_LABEL: Record<string, string> = {
-  shop: "🛍 Shop",
-  snail_mail: "✉️ Snail mail",
-  market: "🎪 Market",
-  none: "— No CTA",
-  unattributed: "❓ Unattributed",
-};
+const CTA_LABEL: Record<string, string> = { ...CTA_LABELS, unattributed: "❓ Unattributed" };
 
 export default async function InsightsPage() {
   const [byFormat, byWeekday, top, byCta, trend, followerTrend, instagram] = await Promise.all([

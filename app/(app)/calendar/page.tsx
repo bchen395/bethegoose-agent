@@ -1,11 +1,12 @@
 import { DateTime } from "luxon";
 import Link from "next/link";
 
-import { getCalendarWeek, getIdeaLibrary, todayIso } from "@/lib/db";
+import { getIdeaLibrary, getPostedCountInWeek, getWeekRecap, todayIso } from "@/lib/db";
 import CalendarBoard from "../_components/CalendarBoard";
 import DefaultLayoutButton from "../_components/DefaultLayoutButton";
 import RunPlanButton from "../_components/RunPlanButton";
 import type { DayMeta, IdeaData, SlotCardData } from "../_components/calendar-types";
+import { FORMAT_BADGE, badge } from "../_lib/format";
 
 function mondayOf(d: DateTime): DateTime {
   return d.minus({ days: d.weekday - 1 }).startOf("day");
@@ -23,7 +24,15 @@ export default async function CalendarPage({
   const weekStartIso = monday.toISODate()!;
   const isThisWeek = weekStartIso === mondayOf(today).toISODate();
 
-  const [slots, ideaRows] = await Promise.all([getCalendarWeek(weekStartIso), getIdeaLibrary()]);
+  const [recap, postedCount, ideaRows] = await Promise.all([
+    getWeekRecap(weekStartIso),
+    getPostedCountInWeek(weekStartIso),
+    getIdeaLibrary(),
+  ]);
+  const slots = recap.map((r) => r.slot);
+  const matchedCount = recap.filter((r) => r.post).length;
+  const unplanned = Math.max(0, postedCount - matchedCount);
+  const showRecap = slots.length > 0 || postedCount > 0;
 
   const cards: SlotCardData[] = slots.map((slot) => ({
     id: slot.id,
@@ -90,6 +99,57 @@ export default async function CalendarPage({
       )}
 
       <CalendarBoard weekStart={weekStartIso} days={days} slots={cards} ideas={ideas} />
+
+      {showRecap && (
+        <section className="card" style={{ marginTop: 18 }}>
+          <h2 style={{ marginTop: 0 }}>📋 Plan vs. posted</h2>
+          <p className="meta">
+            Planned <strong>{slots.length}</strong> · posted <strong>{postedCount}</strong> this week
+            {matchedCount > 0 ? ` · ${matchedCount} matched to plan` : ""}.
+          </p>
+          {slots.length === 0 ? (
+            <p className="muted" style={{ marginBottom: 0 }}>
+              No plan for this week — {postedCount} post(s) went out unplanned.
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+              {recap.map((r) => (
+                <li
+                  key={r.slot.id}
+                  className="row"
+                  style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}
+                >
+                  <span>
+                    {badge(FORMAT_BADGE, r.slot.format)} ·{" "}
+                    {r.slot.theme || r.slot.contentIdea || "—"}
+                  </span>
+                  {r.post ? (
+                    <span className="ok text-sm">
+                      ✓ posted — {r.post.saves ?? 0} saves · {r.post.shares ?? 0} shares · score{" "}
+                      <strong className="tabular">{r.score ?? 0}</strong>
+                      {r.post.permalink ? (
+                        <>
+                          {" · "}
+                          <a href={r.post.permalink} target="_blank" rel="noreferrer">
+                            view ↗
+                          </a>
+                        </>
+                      ) : null}
+                    </span>
+                  ) : (
+                    <span className="muted text-sm">not posted</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {unplanned > 0 && (
+            <p className="muted text-xs" style={{ marginBottom: 0, marginTop: 10 }}>
+              +{unplanned} post(s) this week weren&apos;t tied to a planned slot.
+            </p>
+          )}
+        </section>
+      )}
     </main>
   );
 }

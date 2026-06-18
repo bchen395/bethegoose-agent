@@ -28,12 +28,14 @@ import {
   updateCalendarSlot,
   updateEngagement,
   updateMarket,
+  updatePost,
   updateProduct,
   updateSettings,
 } from "@/lib/db";
 import { defaultWeekTemplate } from "@/lib/calendar/template";
 import { createClient } from "@/lib/supabase/server";
 import {
+  CTA_OPTIONS,
   FORMATS,
   MARKET_STATUSES,
   PRODUCT_TYPES,
@@ -75,6 +77,18 @@ export async function saveNumbers(
   revalidatePath("/insights");
 }
 
+/**
+ * Tag which CTA a posted item drove (FEATURES.md §4). One tap on /engagement; the
+ * stored cta_type powers the "which CTA converts" insight and the Strategy Agent's
+ * CTA-rotation cues. Validates against the schema CHECK before writing.
+ */
+export async function setPostCta(postId: number, ctaType: string): Promise<void> {
+  if (!CTA_OPTIONS.includes(ctaType)) throw new Error("Pick a valid CTA type.");
+  await updatePost(postId, { ctaType });
+  revalidatePath("/engagement");
+  revalidatePath("/insights");
+}
+
 /** Log new subscribers (FEATURES.md §4), optionally attributed to a post. */
 export async function logSubscriberEvent(input: {
   channel: string;
@@ -99,8 +113,8 @@ export async function logSubscriberEvent(input: {
 // These back the authed CRUD screens that replace the seed-only data entry.
 // Each validates enums + CHECK-constraint preconditions before writing so the
 // user gets a clean message instead of a raw Postgres error, mirroring the
-// CTA_OPTIONS pattern above. Agent-owned fields (products.lastPromotedAt,
-// markets.draftApplication) are never accepted here.
+// CTA_OPTIONS pattern above. The agent-managed products.lastPromotedAt is never
+// accepted here.
 
 /** Split a textarea (one item per line) into a clean, de-duped list. */
 function parseLines(text: string): string[] {
@@ -185,7 +199,6 @@ export async function saveSettings(data: {
   weeklyMix: { reel: number; carousel: number; static: number };
   webSearchCadence: string;
   monthlyBudgetUsd: string;
-  captionStartersEnabled: boolean;
   shopUrl: string;
 }): Promise<void> {
   const timezone = data.timezone.trim();
@@ -226,7 +239,6 @@ export async function saveSettings(data: {
     },
     webSearchCadence: data.webSearchCadence,
     monthlyBudgetUsd: String(budget),
-    captionStartersEnabled: Boolean(data.captionStartersEnabled),
     shopUrl: shopUrl || null,
   });
   revalidatePath("/settings");
