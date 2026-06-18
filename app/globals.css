@@ -563,6 +563,208 @@ pre.checklist {
   font-weight: 600;
 }
 
+/* --- Interactive calendar board (drag-and-drop planner) ------------------- */
+
+/* Week grid beside the idea box; stacks on narrow screens. */
+.cal-board {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+@media (min-width: 900px) {
+  .cal-board {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    align-items: start;
+  }
+  /* The week's own 2-up grid is redundant once it sits in its own column. */
+  .cal-board .cal-week {
+    margin-top: 0;
+  }
+}
+
+/* A day cell becomes a drop target; highlight while a card hovers over it. */
+.cal-day.drop-over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--card));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Each draggable slot wraps the read-only SlotCard with a controls row. */
+.slot-wrap {
+  position: relative;
+}
+
+.slot-wrap + .slot-wrap {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* Inside the board the divider lives on the wrap, not the card itself. */
+.slot-wrap > .slot {
+  padding-top: 0;
+  border-top: none;
+}
+
+.slot-wrap.dragging {
+  opacity: 0.95;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.16));
+  padding: 8px;
+  cursor: grabbing;
+}
+
+.slot-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+}
+
+.slot-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.slot-move {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--muted);
+}
+
+/* The drag handle — the only part of a card that initiates a drag. */
+.grip {
+  cursor: grab;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 2px;
+  line-height: 1;
+  touch-action: none;
+}
+
+.grip:active {
+  cursor: grabbing;
+}
+
+.slot-x {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.slot-x:hover {
+  color: var(--danger);
+}
+
+/* A finished post reads as muted + struck through. */
+.slot-done {
+  opacity: 0.55;
+}
+
+.slot-done .slot-theme,
+.slot-done .text-sm {
+  text-decoration: line-through;
+}
+
+/* --- The idea box (reusable library) ------------------------------------- */
+.idea-tray {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.idea-tray.drop-over {
+  border-color: var(--accent);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+
+.idea-tray-head {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg, 1.1rem);
+}
+
+.idea-tray-hint {
+  margin: 0;
+}
+
+.idea-add-btn {
+  align-self: flex-start;
+}
+
+.idea-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.idea-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.idea-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.idea-card.dragging {
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.16));
+  cursor: grabbing;
+}
+
+.idea-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.idea-archive {
+  margin-left: auto;
+}
+
+.idea-title {
+  font-weight: 600;
+}
+
+.idea-schedule {
+  align-self: flex-start;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--muted);
+}
+
 /* --- Read rows (scannable list with inline edit) -------------------------- */
 .read-list {
   border: 1px solid var(--border);

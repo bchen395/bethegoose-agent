@@ -13,22 +13,34 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
+  archiveIdea,
+  deleteCalendarSlot,
   deleteMarket,
+  getCalendarWeek,
+  getIdea,
+  getSettings,
+  insertCalendarSlot,
+  insertIdea,
   insertMarket,
   insertProduct,
   insertSubscriberEvent,
   updateBrandVoice,
+  updateCalendarSlot,
   updateEngagement,
   updateMarket,
   updateProduct,
   updateSettings,
 } from "@/lib/db";
+import { defaultWeekTemplate } from "@/lib/calendar/template";
 import { createClient } from "@/lib/supabase/server";
 import {
+  FORMATS,
   MARKET_STATUSES,
   PRODUCT_TYPES,
   WEB_SEARCH_CADENCES,
 } from "@/app/(app)/_lib/format";
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Coerce to a non-negative integer, or null if blank/invalid. */
 function cleanCount(v: number | null | undefined): number | null {
@@ -235,6 +247,92 @@ export async function saveBrandVoice(data: {
     snailMailPitch: data.snailMailPitch.trim() || null,
   });
   revalidatePath("/settings");
+}
+
+// --- Interactive calendar: drag-drop, the idea library, and "done" ----------
+//
+// These back the interactive /calendar board. Any manual change pins the slot
+// (pinned = true) so a Strategy Agent re-run preserves it (see replaceWeekPlan).
+
+/** Seed an empty week from the deterministic default layout (un-pinned). */
+export async function seedDefaultWeek(weekStart: string): Promise<void> {
+  if (!ISO_DATE.test(weekStart)) throw new Error("Invalid week.");
+  const existing = await getCalendarWeek(weekStart);
+  if (existing.length > 0) return; // never duplicate an already-populated week
+  const settings = await getSettings();
+  if (!settings) throw new Error("Settings not configured yet.");
+  for (const slot of defaultWeekTemplate(weekStart, settings)) {
+    await insertCalendarSlot({ ...slot, weekStart, pinned: false });
+  }
+  revalidatePath("/calendar");
+}
+
+/** Create a custom post idea in the reusable library (the "box"). */
+export async function createIdea(data: {
+  title: string;
+  format: string;
+  contentIdea: string;
+}): Promise<void> {
+  const title = data.title.trim();
+  if (!title) throw new Error("Give your idea a short title.");
+  const format = data.format.trim();
+  if (format && !FORMATS.includes(format)) throw new Error("Pick a valid format.");
+  await insertIdea({
+    title,
+    format: format || null,
+    contentIdea: data.contentIdea.trim() || null,
+    source: "user",
+  });
+  revalidatePath("/calendar");
+}
+
+/** Hide an idea from the library (calendar slots that used it are untouched). */
+export async function archiveIdeaAction(ideaId: number): Promise<void> {
+  await archiveIdea(ideaId);
+  revalidatePath("/calendar");
+}
+
+/** Schedule a library idea onto a day — copies its fields; the idea stays. */
+export async function scheduleIdea(
+  ideaId: number,
+  slotDate: string,
+  weekStart: string,
+): Promise<void> {
+  if (!ISO_DATE.test(slotDate) || !ISO_DATE.test(weekStart)) throw new Error("Invalid day.");
+  const idea = await getIdea(ideaId);
+  if (!idea) throw new Error("That idea no longer exists.");
+  const settings = await getSettings();
+  await insertCalendarSlot({
+    weekStart,
+    slotDate,
+    slotTime: settings?.defaultPostTime ?? "12:00",
+    format: idea.format,
+    theme: idea.title,
+    contentIdea: idea.contentIdea,
+    priority: 2,
+    pinned: true,
+    ideaId: idea.id,
+  });
+  revalidatePath("/calendar");
+}
+
+/** Move a scheduled slot to another day (drag between day columns). */
+export async function moveSlot(slotId: number, newSlotDate: string): Promise<void> {
+  if (!ISO_DATE.test(newSlotDate)) throw new Error("Invalid day.");
+  await updateCalendarSlot(slotId, { slotDate: newSlotDate, pinned: true });
+  revalidatePath("/calendar");
+}
+
+/** Remove a slot from the calendar (drag back to the tray / unschedule). */
+export async function unscheduleSlot(slotId: number): Promise<void> {
+  await deleteCalendarSlot(slotId);
+  revalidatePath("/calendar");
+}
+
+/** Toggle the lightweight "done" planning check on a slot. */
+export async function setSlotDone(slotId: number, done: boolean): Promise<void> {
+  await updateCalendarSlot(slotId, { done: Boolean(done), pinned: true });
+  revalidatePath("/calendar");
 }
 
 export async function signOut(): Promise<void> {

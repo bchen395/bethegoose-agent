@@ -1,9 +1,11 @@
 import { DateTime } from "luxon";
 import Link from "next/link";
 
-import { getCalendarWeek, todayIso } from "@/lib/db";
+import { getCalendarWeek, getIdeaLibrary, todayIso } from "@/lib/db";
+import CalendarBoard from "../_components/CalendarBoard";
+import DefaultLayoutButton from "../_components/DefaultLayoutButton";
 import RunPlanButton from "../_components/RunPlanButton";
-import SlotCard, { type SlotCardData } from "../_components/SlotCard";
+import type { DayMeta, IdeaData, SlotCardData } from "../_components/calendar-types";
 
 function mondayOf(d: DateTime): DateTime {
   return d.minus({ days: d.weekday - 1 }).startOf("day");
@@ -21,7 +23,7 @@ export default async function CalendarPage({
   const weekStartIso = monday.toISODate()!;
   const isThisWeek = weekStartIso === mondayOf(today).toISODate();
 
-  const slots = await getCalendarWeek(weekStartIso);
+  const [slots, ideaRows] = await Promise.all([getCalendarWeek(weekStartIso), getIdeaLibrary()]);
 
   const cards: SlotCardData[] = slots.map((slot) => ({
     id: slot.id,
@@ -31,26 +33,27 @@ export default async function CalendarPage({
     theme: slot.theme,
     contentIdea: slot.contentIdea,
     priority: slot.priority,
+    done: slot.done,
+  }));
+
+  const ideas: IdeaData[] = ideaRows.map((i) => ({
+    id: i.id,
+    title: i.title,
+    format: i.format,
+    contentIdea: i.contentIdea,
   }));
 
   const prev = monday.minus({ days: 7 }).toISODate();
   const next = monday.plus({ days: 7 }).toISODate();
 
-  const byDate = new Map<string, SlotCardData[]>();
-  for (const c of cards) {
-    const day = byDate.get(c.slotDate) ?? [];
-    day.push(c);
-    byDate.set(c.slotDate, day);
-  }
-
   const todayDate = today.toISODate()!;
-  const days = Array.from({ length: 7 }, (_, i) => {
+  const days: DayMeta[] = Array.from({ length: 7 }, (_, i) => {
     const d = monday.plus({ days: i });
     const iso = d.toISODate()!;
     return {
-      d,
       iso,
-      daySlots: byDate.get(iso) ?? [],
+      name: d.toFormat("ccc"),
+      dateLabel: d.toFormat("LLL d"),
       isToday: isThisWeek && iso === todayDate,
       isPast: isThisWeek && iso < todayDate,
     };
@@ -74,42 +77,19 @@ export default async function CalendarPage({
         </Link>
       </div>
 
-      <div style={{ margin: "14px 0" }}>
+      <div className="row" style={{ margin: "14px 0", gap: 10, flexWrap: "wrap" }}>
         <RunPlanButton weekStart={weekStartIso} />
+        {slots.length === 0 && <DefaultLayoutButton weekStart={weekStartIso} />}
       </div>
 
-      {slots.length === 0 ? (
+      {slots.length === 0 && (
         <p className="muted">
-          No plan for this week yet. Click <strong>Run weekly plan now</strong> to generate one.
+          No plan for this week yet. <strong>Run weekly plan now</strong> for an agent plan,{" "}
+          <strong>use a default layout</strong>, or drag ideas from the box onto a day.
         </p>
-      ) : (
-        <div className="cal-week">
-          {days.map(({ d, iso, daySlots, isToday, isPast }) => (
-            <div
-              key={iso}
-              className={[
-                "cal-day",
-                isToday && "cal-day-today",
-                isPast && "cal-day-past",
-                daySlots.length === 0 && "cal-day-empty",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            >
-              <div className="cal-day-head">
-                <span className="cal-day-name">{d.toFormat("ccc")}</span>
-                <span className="cal-day-date tabular">{d.toFormat("LLL d")}</span>
-                {isToday && <span className="chip chip-must cal-today-tag">today</span>}
-              </div>
-              {daySlots.length === 0 ? (
-                <div className="cal-rest">— no post planned</div>
-              ) : (
-                daySlots.map((c) => <SlotCard key={c.id} slot={c} />)
-              )}
-            </div>
-          ))}
-        </div>
       )}
+
+      <CalendarBoard weekStart={weekStartIso} days={days} slots={cards} ideas={ideas} />
     </main>
   );
 }
