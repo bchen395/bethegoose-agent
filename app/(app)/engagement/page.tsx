@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { getPostsMissingEngagement, getRecentPosted, type Post } from "@/lib/db";
 import { FORMAT_BADGE, badge } from "../_lib/format";
+import CtaTagSelect from "../_components/CtaTagSelect";
 import NumbersForm from "../_components/NumbersForm";
 import SubscriberForm, { type PostOption } from "../_components/SubscriberForm";
 
@@ -41,8 +42,9 @@ export default async function EngagementPage() {
     <main>
       <h1>📊 Engagement</h1>
       <p className="muted">
-        Posts and their numbers sync from Instagram daily — no typing needed. The form lower down is
-        a manual fallback for anything the API didn&apos;t return.
+        Posts and their numbers sync from Instagram daily — no typing needed. Tag the CTA each post
+        drove to learn which converts (see Insights). The form lower down is a manual fallback for
+        anything the API didn&apos;t return.
       </p>
 
       <h2>Recent posts</h2>
@@ -66,6 +68,9 @@ export default async function EngagementPage() {
               </p>
             )}
             <div className="meta">{metricLine(post)}</div>
+            <div style={{ marginTop: 6 }}>
+              <CtaTagSelect postId={post.id} value={post.ctaType} />
+            </div>
             {post.permalink && (
               <a href={post.permalink} target="_blank" rel="noreferrer" className="text-sm">
                 View on Instagram ↗

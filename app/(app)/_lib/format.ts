@@ -14,6 +14,15 @@ export const STATUS_BADGE: Record<string, string> = {
 
 export const CTA_OPTIONS = ["none", "shop", "snail_mail", "market"];
 
+// Human labels for a post's CTA type — shared by the engagement tag selector and
+// the insights "which CTA converts" panel (which adds 'unattributed' for nulls).
+export const CTA_LABELS: Record<string, string> = {
+  none: "— No CTA",
+  shop: "🛍 Shop",
+  snail_mail: "✉️ Snail mail",
+  market: "🎪 Market",
+};
+
 // Post formats — the shared vocabulary for the calendar, idea library, and the
 // new-idea form dropdown. Mirrors the schema CHECK constraints (posts/calendar/
 // post_ideas). Keep in sync with lib/db/schema.ts.

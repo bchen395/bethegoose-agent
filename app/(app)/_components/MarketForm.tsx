@@ -128,12 +128,6 @@ export default function MarketForm({
           onChange={(e) => setNotes(e.target.value)}
         />
       </label>
-      {editing && market?.draftApplication && (
-        <details style={{ marginTop: 8 }}>
-          <summary className="muted">Agent-drafted blurb (read-only)</summary>
-          <p style={{ whiteSpace: "pre-wrap" }}>{market.draftApplication}</p>
-        </details>
-      )}
       <div className="row" style={{ marginTop: 10 }}>
         <button className="btn btn-primary" type="submit" disabled={busy}>
           {editing ? "💾 Save" : "➕ Add market"}

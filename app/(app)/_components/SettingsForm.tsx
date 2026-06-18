@@ -20,9 +20,6 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
   const [staticCount, setStaticCount] = useState(String(mix.static ?? 0));
   const [webSearchCadence, setWebSearchCadence] = useState(settings.webSearchCadence);
   const [monthlyBudgetUsd, setMonthlyBudgetUsd] = useState(String(settings.monthlyBudgetUsd));
-  const [captionStartersEnabled, setCaptionStartersEnabled] = useState(
-    settings.captionStartersEnabled,
-  );
   const [shopUrl, setShopUrl] = useState(settings.shopUrl ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -47,7 +44,6 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
         },
         webSearchCadence,
         monthlyBudgetUsd,
-        captionStartersEnabled,
         shopUrl,
       });
       setOk("Settings saved.");
@@ -136,7 +132,7 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
       </fieldset>
 
       <fieldset className="field-group">
-        <legend>Hashtags & captions</legend>
+        <legend>Hashtags</legend>
         <div className="row" style={{ alignItems: "flex-end" }}>
           <label>
             Hashtags min
@@ -161,14 +157,6 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
             />
           </label>
         </div>
-        <label className="row" style={{ gap: 6, marginTop: 12 }}>
-          <input
-            type="checkbox"
-            checked={captionStartersEnabled}
-            onChange={(e) => setCaptionStartersEnabled(e.target.checked)}
-          />
-          Enable caption starters
-        </label>
       </fieldset>
 
       <fieldset className="field-group">

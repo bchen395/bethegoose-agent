@@ -1,17 +1,16 @@
 /**
  * lib/db/index.ts — typed read/write helpers, the only gateway to Postgres.
  *
- * 1:1 port of utils/db.py. Every caller (agents + UI) goes through these so the
- * call surface matches the Python original. JSON columns are jsonb now, so the
- * encode/decode plumbing is gone — arrays round-trip natively. Timestamps are
- * written in settings.timezone as ISO-8601 (Luxon replaces zoneinfo).
+ * Every caller (the Strategy Agent, the syncs, and the UI) goes through these.
+ * JSON columns are jsonb, so arrays round-trip natively. Timestamps are written
+ * in settings.timezone as ISO-8601 (via Luxon).
  *
  * Connects through Supabase's Supavisor transaction pooler (DATABASE_URL); that
  * pooler doesn't support prepared statements, hence `prepare: false`.
  */
 
 import { DateTime } from "luxon";
-import { and, asc, desc, eq, gte, isNotNull, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, lte, notInArray, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -280,38 +279,6 @@ export async function getCalendarSlot(slotId: number): Promise<CalendarSlot | nu
   return rows[0] ?? null;
 }
 
-/** The calendar slot linked to a post, or null. */
-export async function getCalendarSlotByPost(postId: number): Promise<CalendarSlot | null> {
-  const rows = await db
-    .select()
-    .from(calendar)
-    .where(eq(calendar.postId, postId))
-    .orderBy(asc(calendar.id))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-/**
- * slot_time of the most recent calendar slots that already have a linked post —
- * lets the Distribution Agent avoid scheduling back-to-back identical times.
- */
-export async function getRecentScheduledTimes(
-  limit = 5,
-  excludePostId?: number,
-): Promise<string[]> {
-  const filters = [isNotNull(calendar.postId), isNotNull(calendar.slotTime)];
-  if (excludePostId !== undefined && excludePostId !== null) {
-    filters.push(ne(calendar.postId, excludePostId));
-  }
-  const rows = await db
-    .select({ slotTime: calendar.slotTime })
-    .from(calendar)
-    .where(and(...filters))
-    .orderBy(desc(calendar.slotDate), desc(calendar.slotTime), desc(calendar.id))
-    .limit(limit);
-  return rows.map((r) => r.slotTime!).filter((t): t is string => t != null);
-}
-
 export async function updateCalendarSlot(
   slotId: number,
   fields: Partial<typeof calendar.$inferInsert>,
@@ -320,8 +287,85 @@ export async function updateCalendarSlot(
   await db.update(calendar).set(fields).where(eq(calendar.id, slotId));
 }
 
+/**
+ * Link a planned slot to the post that fulfilled it (plan→actual loop). Marks the
+ * slot done — it was posted — and the non-null post_id keeps replaceWeekPlan from
+ * clearing it on a re-run (see its isNull(post_id) guard).
+ */
 export async function linkSlotToPost(slotId: number, postId: number): Promise<void> {
-  await updateCalendarSlot(slotId, { postId });
+  await updateCalendarSlot(slotId, { postId, done: true });
+}
+
+/** Planned slots for a week not yet linked to a post — candidates for matching. */
+export async function getUnlinkedSlotsForWeek(weekStart: string): Promise<CalendarSlot[]> {
+  return db
+    .select()
+    .from(calendar)
+    .where(and(eq(calendar.weekStart, weekStart), isNull(calendar.postId)))
+    .orderBy(asc(calendar.slotDate), asc(calendar.id));
+}
+
+/**
+ * Posted rows within the window not yet linked to any planned slot — the input to
+ * the Instagram sync's plan↔actual matching pass. Newest-published first.
+ */
+export async function getUnmatchedPostedPosts(withinDays = 28): Promise<Post[]> {
+  const cutoff = await windowStart(withinDays);
+  const linked = await db
+    .select({ postId: calendar.postId })
+    .from(calendar)
+    .where(isNotNull(calendar.postId));
+  const linkedIds = linked.map((r) => r.postId).filter((x): x is number => x != null);
+  const conds = [
+    eq(posts.status, "posted"),
+    isNotNull(posts.publishedAt),
+    gte(posts.publishedAt, cutoff),
+  ];
+  if (linkedIds.length > 0) conds.push(notInArray(posts.id, linkedIds));
+  return db
+    .select()
+    .from(posts)
+    .where(and(...conds))
+    .orderBy(desc(posts.publishedAt), desc(posts.id));
+}
+
+export type RecapRow = { slot: CalendarSlot; post: Post | null; score: number | null };
+
+/**
+ * A week's plan vs. actuals: every planned slot, plus the post that fulfilled it
+ * (via calendar.post_id) with its performance score, or null if nothing matched.
+ * Backs the /calendar recap and the Strategy Agent's last-week context.
+ */
+export async function getWeekRecap(weekStart: string): Promise<RecapRow[]> {
+  const score = scoreExpr();
+  const rows = await db
+    .select({
+      slot: calendar,
+      post: posts,
+      score: sql<number | null>`case when ${posts.id} is null then null else ${score} end`,
+    })
+    .from(calendar)
+    .leftJoin(posts, eq(calendar.postId, posts.id))
+    .where(eq(calendar.weekStart, weekStart))
+    .orderBy(asc(calendar.slotDate), asc(calendar.slotTime), asc(calendar.id));
+  return rows.map((r) => ({
+    slot: r.slot,
+    post: r.post && r.post.id != null ? r.post : null,
+    score: r.score == null ? null : round(Number(r.score), 4),
+  }));
+}
+
+/** Count of posted rows actually published in the given week (Mon..Sun). */
+export async function getPostedCountInWeek(weekStart: string): Promise<number> {
+  const end = DateTime.fromISO(weekStart).plus({ days: 7 }).toISODate()!;
+  const publishTs = sql`coalesce(${posts.publishedAt}, ${posts.postedAt})`;
+  const rows = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(posts)
+    .where(
+      and(eq(posts.status, "posted"), sql`${publishTs} >= ${weekStart}`, sql`${publishTs} < ${end}`),
+    );
+  return Number(rows[0]?.n ?? 0);
 }
 
 /** Insert a single calendar slot (manual scheduling / default-layout seed). */
@@ -402,14 +446,6 @@ export async function getActiveProducts(): Promise<Product[]> {
     .orderBy(sql`${products.lastPromotedAt} asc nulls first`, asc(products.id));
 }
 
-/** Stamp last_promoted_at (Distribution Agent at approval) -> CTA rotation. */
-export async function setProductPromoted(productId: number, when?: string): Promise<void> {
-  await db
-    .update(products)
-    .set({ lastPromotedAt: when ?? (await nowIso()) })
-    .where(eq(products.id, productId));
-}
-
 /** Look up a product by its Stripe id — the upsert key for the Item #3 shop sync. */
 export async function getProductByStripeId(stripeProductId: string): Promise<Product | null> {
   const rows = await db
@@ -462,7 +498,7 @@ export async function getAllMarkets(): Promise<Market[]> {
     .orderBy(sql`${markets.eventDate} asc nulls last`, asc(markets.id));
 }
 
-/** Patch a market — never touches the agent-written draft_application. */
+/** Patch a market's editable fields. */
 export async function updateMarket(
   marketId: number,
   fields: Partial<typeof markets.$inferInsert>,
@@ -492,7 +528,7 @@ export async function getUpcomingMarkets(withinDays = 45): Promise<Market[]> {
     .orderBy(asc(markets.eventDate));
 }
 
-/** Markets with an application_deadline in the next N days (Distribution + UI banner). */
+/** Markets with an application_deadline in the next N days (UI banner). */
 export async function getMarketsWithDeadline(withinDays = 14): Promise<Market[]> {
   const [today, cutoff] = await dateWindow(withinDays);
   return db
@@ -506,11 +542,6 @@ export async function getMarketsWithDeadline(withinDays = 14): Promise<Market[]>
       ),
     )
     .orderBy(asc(markets.applicationDeadline));
-}
-
-/** Write the agent-drafted blurb without touching human `notes`. */
-export async function setMarketDraftApplication(marketId: number, text: string): Promise<void> {
-  await db.update(markets).set({ draftApplication: text }).where(eq(markets.id, marketId));
 }
 
 // --- insights (§2): aggregates over posts × engagement ----------------------
