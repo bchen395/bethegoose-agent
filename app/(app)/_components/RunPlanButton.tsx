@@ -66,24 +66,24 @@ export default function RunPlanButton({ weekStart }: { weekStart: string }) {
           <strong>🧠 Strategy Agent notes</strong>
           {notes.reasoning && <p style={{ marginBottom: 6 }}>{notes.reasoning}</p>}
           {notes.webQueries && notes.webQueries.length > 0 ? (
-            <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+            <p className="muted text-xs" style={{ margin: 0 }}>
               Web searches: {notes.webQueries.join(", ")}
             </p>
           ) : notes.webSkippedReason === "cadence" ? (
-            <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+            <p className="muted text-xs" style={{ margin: 0 }}>
               Web search skipped (monthly cadence — searched recently). Planned on first-party data.
             </p>
           ) : notes.webSkippedReason === "off" ? (
-            <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+            <p className="muted text-xs" style={{ margin: 0 }}>
               Web search is off — planned on first-party data only.
             </p>
           ) : notes.webUsed === false ? (
-            <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+            <p className="muted text-xs" style={{ margin: 0 }}>
               Web research was unavailable — planned on first-party data only.
             </p>
           ) : null}
           {notes.mixActual && Object.keys(notes.mixActual).length > 0 && (
-            <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+            <p className="muted text-xs" style={{ margin: "6px 0 0" }}>
               Format mix: {fmtMix(notes.mixActual)}
               {notes.mixTarget && Object.keys(notes.mixTarget).length > 0
                 ? ` (target ${fmtMix(notes.mixTarget)})`
@@ -91,7 +91,7 @@ export default function RunPlanButton({ weekStart }: { weekStart: string }) {
             </p>
           )}
           {notes.mixNote && (
-            <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+            <p className="muted text-xs" style={{ margin: "4px 0 0" }}>
               ⚖ {notes.mixNote}
             </p>
           )}

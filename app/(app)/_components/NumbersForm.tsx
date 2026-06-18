@@ -93,7 +93,7 @@ export default function NumbersForm({ postId, initial }: { postId: number; initi
           💾 Save numbers
         </button>
       </div>
-      <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+      <p className="muted text-xs" style={{ marginTop: 4 }}>
         Only <strong>saves</strong> + <strong>reach</strong> are required. Shares is the strongest
         growth signal — worth the extra tap.
       </p>

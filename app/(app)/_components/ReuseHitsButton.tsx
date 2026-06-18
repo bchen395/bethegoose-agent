@@ -46,15 +46,13 @@ export default function ReuseHitsButton() {
       <button className="btn" onClick={run} disabled={busy}>
         {busy ? "Asking Haiku…" : "♻️ Suggest reuses"}
       </button>
-      <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
+      <span className="muted text-xs" style={{ marginLeft: 8 }}>
         One quick Haiku call over your top posts — nothing is saved.
       </span>
 
       {error && <p className="err">{error}</p>}
       {message && (
-        <p className="muted" style={{ fontSize: 13 }}>
-          {message}
-        </p>
+        <p className="muted text-sm">{message}</p>
       )}
 
       {suggestions && suggestions.length > 0 && (
@@ -65,8 +63,8 @@ export default function ReuseHitsButton() {
                 {s.suggested_format ? `${s.suggested_format} · ` : ""}
                 {s.title}
               </div>
-              <p style={{ margin: "4px 0", fontSize: 14 }}>{s.idea}</p>
-              <div className="muted" style={{ fontSize: 12 }}>
+              <p className="text-md" style={{ margin: "4px 0" }}>{s.idea}</p>
+              <div className="muted text-xs">
                 from post{s.based_on_post_ids.length === 1 ? "" : "s"}{" "}
                 {s.based_on_post_ids.map((id) => `#${id}`).join(", ")}
                 {s.product_tie_in ? ` · ties in: ${s.product_tie_in}` : ""}

@@ -1,6 +1,7 @@
 import { getAllProducts } from "@/lib/db";
 
 import ProductForm from "../_components/ProductForm";
+import ProductRow from "../_components/ProductRow";
 
 export default async function ProductsPage() {
   const products = await getAllProducts();
@@ -19,7 +20,11 @@ export default async function ProductsPage() {
       {products.length === 0 ? (
         <p className="muted">No products yet — add one above.</p>
       ) : (
-        products.map((p) => <ProductForm key={p.id} product={p} />)
+        <div className="read-list">
+          {products.map((p) => (
+            <ProductRow key={p.id} product={p} />
+          ))}
+        </div>
       )}
     </main>
   );

@@ -34,9 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="topbar-inner">
           <strong>🎨 Be The Goose</strong>
           <NavLinks />
-          <span className="muted" style={{ fontSize: 12 }}>
-            {user.email}
-          </span>
+          <span className="muted text-xs">{user.email}</span>
           <SignOutButton />
         </div>
       </header>
@@ -44,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="container">
         {/* Always-on banners (engagement nudge + market deadlines + API spend). */}
         {monthlySpend > 0 && (
-          <div className={overBudget ? "banner" : "banner info"}>
+          <div className={overBudget ? "banner warn" : "banner info"}>
             💸 API spend this month: <strong>${monthlySpend.toFixed(2)}</strong>
             {budget != null && Number.isFinite(budget) ? ` of $${budget.toFixed(2)} budget` : ""}
             {overBudget ? " — over budget!" : ""}
@@ -56,18 +54,28 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             view to keep the learning loop fed.
           </div>
         )}
-        {deadlines.map((m) => (
-          <div className="banner info" key={m.id}>
-            🗓 Market deadline: <strong>{m.name}</strong>
-            {m.applicationDeadline ? ` — applications due ${m.applicationDeadline}` : ""}
-            {m.draftApplication ? (
-              <details style={{ marginTop: 6 }}>
-                <summary>Draft application for {m.name}</summary>
-                <p style={{ whiteSpace: "pre-wrap" }}>{m.draftApplication}</p>
-              </details>
-            ) : null}
+        {deadlines.length > 0 && (
+          <div className="banner info">
+            🗓{" "}
+            {deadlines.length === 1
+              ? "Market deadline coming up:"
+              : `${deadlines.length} market deadlines coming up:`}
+            <ul className="banner-list">
+              {deadlines.map((m) => (
+                <li key={m.id}>
+                  <strong>{m.name}</strong>
+                  {m.applicationDeadline ? ` — applications due ${m.applicationDeadline}` : ""}
+                  {m.draftApplication ? (
+                    <details style={{ marginTop: 4 }}>
+                      <summary>Draft application</summary>
+                      <p style={{ whiteSpace: "pre-wrap" }}>{m.draftApplication}</p>
+                    </details>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
           </div>
-        ))}
+        )}
 
         {children}
       </div>

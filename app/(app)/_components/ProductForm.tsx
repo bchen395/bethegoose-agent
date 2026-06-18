@@ -5,17 +5,18 @@ import { useState } from "react";
 
 import { createProduct, updateProductAction } from "@/app/actions";
 import type { Product } from "@/lib/db";
-import { PRODUCT_TYPES } from "../_lib/format";
-
-const TYPE_LABELS: Record<string, string> = {
-  print: "Print",
-  sticker: "Sticker",
-  craft: "Craft",
-  snail_mail: "Snail mail",
-};
+import { PRODUCT_TYPES, TYPE_LABELS } from "../_lib/format";
 
 /** Add (no `product`) or edit (with `product`) a single product row. */
-export default function ProductForm({ product }: { product?: Product }) {
+export default function ProductForm({
+  product,
+  onSaved,
+  onCancel,
+}: {
+  product?: Product;
+  onSaved?: () => void;
+  onCancel?: () => void;
+}) {
   const router = useRouter();
   const editing = product != null;
   const [name, setName] = useState(product?.name ?? "");
@@ -40,6 +41,7 @@ export default function ProductForm({ product }: { product?: Product }) {
       if (editing) {
         await updateProductAction(product!.id, data);
         setOk("Saved.");
+        onSaved?.();
       } else {
         await createProduct(data);
         setName("");
@@ -89,13 +91,18 @@ export default function ProductForm({ product }: { product?: Product }) {
         <button className="btn btn-primary" type="submit" disabled={busy}>
           {editing ? "💾 Save" : "➕ Add product"}
         </button>
+        {onCancel && (
+          <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        )}
       </div>
       {editing && product?.lastPromotedAt && (
-        <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+        <p className="muted text-xs" style={{ marginTop: 6 }}>
           Last promoted: {product.lastPromotedAt} (managed by the agent — read-only)
         </p>
       )}
-      {ok && <p style={{ color: "#2f7d32", fontSize: 13 }}>{ok}</p>}
+      {ok && <p className="ok">{ok}</p>}
       {error && <p className="err">{error}</p>}
     </form>
   );

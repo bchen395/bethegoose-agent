@@ -49,7 +49,7 @@ export default function SubscriberForm({ posts }: { posts: PostOption[] }) {
   return (
     <form onSubmit={onSubmit} className="card">
       <strong>➕ New subscribers this period</strong>
-      <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+      <p className="muted text-sm" style={{ marginTop: 4 }}>
         Converting followers to the mailing list is the most durable growth at this size — log them
         here so you can see which CTAs actually convert.
       </p>
@@ -102,7 +102,7 @@ export default function SubscriberForm({ posts }: { posts: PostOption[] }) {
           💾 Log subscribers
         </button>
       </div>
-      {ok && <p style={{ color: "#2f7d32", fontSize: 13 }}>{ok}</p>}
+      {ok && <p className="ok">{ok}</p>}
       {error && <p className="err">{error}</p>}
     </form>
   );
