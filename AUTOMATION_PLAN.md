@@ -74,7 +74,16 @@ hits a `GET` route under `app/api/cron/...`; the route checks
 
 ---
 
-# Item #1 — Auto-pull Instagram stats (the headline win)
+# Item #1 — Auto-pull Instagram stats (the headline win) ✅ (2026-06-17)
+
+> **Built — with one adaptation.** Shipped alongside the pipeline simplification (Review +
+> photo-upload + Content/Distribution agents removed; posting/CTAs now manual). Because there
+> are no longer in-app drafts/captions to match against, the "match IG media to an approved
+> post by caption similarity" step below was **dropped**: the sync now **ingests recent IG
+> media directly as `posts` rows** (status `posted`, real `published_at`, caption, format,
+> permalink) — Instagram is the source of posted rows. Everything else (token OAuth + refresh,
+> media insights → the five metric columns, follower snapshots, manual-form fallback) shipped
+> as designed. See PROGRESS.md (2026-06-17) for the file-level log.
 
 **Problem.** Entering saves/reach/likes/comments/shares on `/engagement` is the single
 most-repeated chore, required for *every post forever*, and the "you still owe numbers"
@@ -96,52 +105,13 @@ development mode with the owner as a tester). Meta does not charge for it.
 
 ### 1A. Instagram API setup — step by step
 
-> These steps reflect Meta's 2026 "Instagram API with Instagram Login" flow. Meta changes
-> this often — verify against the live docs as you go:
-> - Instagram API with Instagram Login: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/
-> - Media insights reference: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights/
-> - Insights overview: https://developers.facebook.com/docs/instagram-platform/insights/
-
-1. **Convert the IG account to Professional.** In the Instagram app: *Settings → Account type
-   and tools → Switch to professional account → Creator* (free; reversible). A Facebook Page
-   is **not** required for the Instagram-Login path.
-2. **Create a Meta app.** Go to https://developers.facebook.com/apps → *Create app* → use case
-   **"Other" → Business** (or the "Instagram" use case if offered). Note the **App ID** and
-   **App Secret** (*App settings → Basic*).
-3. **Add the Instagram product.** In the app dashboard, add **Instagram** → choose
-   **"Instagram API setup with Instagram login"** (the business-login variant, *not* the old
-   Basic Display).
-4. **Configure business login / OAuth.** Under Instagram → API setup with Instagram login:
-   - Set **Valid OAuth Redirect URIs** to your callback, e.g.
-     `https://<your-vercel-domain>/api/instagram/callback` (and a localhost variant for dev).
-   - Request scopes: **`instagram_business_basic`** and **`instagram_business_manage_insights`**
-     (add `instagram_business_content_publish` only if you ever opt into auto-publish — not in
-     this plan).
-5. **Add yourself as a tester.** App **Roles → add the IG account as an Instagram tester**, and
-   accept the invite from the IG account (Instagram app → *Settings → Apps and websites →
-   Tester invites*). In **development mode** the owner/tester can read their own data with **no
-   App Review**.
-6. **Get a token (one-time OAuth).** Either use Meta's token generator in the dashboard, or run
-   the OAuth flow yourself:
-   - Authorize URL (opens IG consent):
-     `https://www.instagram.com/oauth/authorize?client_id=<APP_ID>&redirect_uri=<REDIRECT>&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights`
-   - Exchange `code` → **short-lived token** (POST `https://api.instagram.com/oauth/access_token`
-     with `client_id`, `client_secret`, `grant_type=authorization_code`, `redirect_uri`, `code`).
-   - Exchange short-lived → **long-lived (60-day) token**:
-     `GET https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=<APP_SECRET>&access_token=<SHORT_TOKEN>`
-   - This also returns your `user_id`. Store both (see schema below).
-7. **Keep the token alive.** Long-lived tokens last ~60 days and must be refreshed *before*
-   expiry: `GET https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=<LONG_TOKEN>`.
-   The weekly cron (1D) will do this automatically.
-8. **The data endpoints** (host `https://graph.instagram.com`, append `access_token=`):
-   - List recent media: `GET /me/media?fields=id,caption,media_type,permalink,timestamp`
-   - Per-post metrics: `GET /{ig-media-id}/insights?metric=reach,saved,likes,comments,shares,total_interactions`
-     (metric availability varies by media type — feed vs reel vs carousel; check the reference
-     doc and degrade gracefully if a metric is absent).
-   - Account/followers: `GET /me?fields=user_id,username,followers_count,media_count`
-9. **New env vars** (add to `.env.local`, Vercel, and `DEPLOY.md`):
-   - `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_REDIRECT_URI`
-   - (The access token + user id are stored in the DB by the OAuth callback, not in env — see 1B.)
+> **Moved.** The one-time Meta-app + Creator-account setup walkthrough now lives in its own
+> self-contained doc: **`INSTAGRAM_SETUP.md`** (account conversion, app creation, OAuth
+> redirect + scopes, tester invite, env vars, connecting, verification, troubleshooting). The
+> app implements the token exchange/refresh + data endpoints described there, so the operator
+> just clicks **Connect Instagram** on Settings. New env vars: `INSTAGRAM_APP_ID`,
+> `INSTAGRAM_APP_SECRET`, `INSTAGRAM_REDIRECT_URI` (the access token + user id are stored in the
+> DB by the OAuth callback, not in env — see 1B).
 
 ### 1B. Schema additions (`lib/db/schema.ts` + `npm run db:push`)
 
@@ -337,8 +307,8 @@ offline (keep manual), but the email channel likely lives on a real ESP.
 
 1. **Item #2 — CRUD screens.** Closes the "seed-only, no UI" gap; should exist regardless;
    provides the settings page that hosts the "Connect Instagram" button. ~1 day.
-2. **Item #1 — Instagram stats auto-pull.** The headline win; depends on the Meta app + the
-   settings page from #2. ~1–2 days.
+2. **Item #1 — Instagram stats auto-pull.** ✅ Done 2026-06-17 (adapted — IG ingests media as
+   posts; see the note under Item #1). The headline win; depends on the settings page from #2.
 3. **Item #3 — Shop product sync (Stripe).** ✅ Done 2026-06-17. ~1 day.
 4. **Item #4 — Email-subscriber sync.** *Blocked on ESP choice.* ~half a day.
 

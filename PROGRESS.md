@@ -635,3 +635,58 @@ that row flips `active=false` while hand-created products are untouched; empty/i
 and push to Vercel via `bash scripts/vercel-env.sh production`. New cron registered in
 `vercel.json`. Next automation item: #4 ESP sync (blocked on ESP choice). Item #1 (Instagram
 stats) deferred per the artist.
+
+---
+
+## Hosted Next.js app — Pipeline simplification + Instagram-as-source (2026-06-17)
+
+**Why.** The review + photo-upload + draft machinery was "too involved for the reward." The app
+is now a forward-looking **suggestion engine** (Calendar) plus a backward-looking **performance
+mirror** (Instagram). Posting, captions and CTAs are all done by hand off-app.
+
+**Phase A — removed (non-destructive at the DB level: columns + CHECKs kept, just unused):**
+- Deleted the Review section (`review/page.tsx`, `ReviewCard.tsx`, `/api/posts/[id]/approve`,
+  `/api/review/caption-starters`), the **Content Agent** (`lib/agents/content.ts`,
+  `/api/content/generate`), the **Distribution Agent** (`lib/agents/distribution.ts`), and
+  `MarkPostedButton`. Removed the Review nav link.
+- `app/actions.ts` — dropped `saveDraft`/`discardDraft`/`markPosted`/`prepareArtUpload`/
+  `finalizeArtUpload` (+ `ensureDraft`/`parseHashtags`/`CTA_OPTIONS`). Kept `saveNumbers`
+  (manual fallback), `logSubscriberEvent`, and all Item #2 CRUD.
+- `SlotCard.tsx` is now a read-only suggestion card (no upload/generate); `calendar/page.tsx`
+  no longer resolves a per-slot post/art. Deleted `lib/storage.ts` (zero importers; the `art`
+  Supabase bucket can be retired out-of-band).
+- Status lifecycle collapses to `posted` (the IG sync is the only producer of rows). The
+  `posts_status_check` / `usage_log` agent CHECKs are unchanged (legacy rows + the kept
+  `agent:"content"` reuse route stay valid). Strategy Agent untouched.
+
+**Phase B — Instagram is the source of posts (`AUTOMATION_PLAN.md` Item #1, adapted):**
+- The plan's "match IG media to an in-app draft by caption" is moot now (no in-app drafts), so
+  the daily sync **ingests media directly as `posts`** (status `posted`, real `published_at`,
+  caption, format, permalink) and pulls the five metrics + follower count.
+- Schema (`lib/db/schema.ts`, applied via `npm run db:push`): new single-row `instagram_account`,
+  new `follower_snapshots`, and `posts.ig_media_id` (unique idx) / `published_at` /
+  `stats_synced_at` / `permalink`.
+- DB helpers: `getInstagramAccount`/`upsertInstagramAccount`/`updateInstagramAccount`,
+  `getPostByIgMediaId`, `getPostsForStatsSync`, `insertFollowerSnapshot`, `getFollowerTrend`.
+  `getEngagementByWeekday` now keys on `coalesce(published_at, posted_at)`.
+- `lib/instagram.ts` (new, server-only, fail-soft — mirrors `lib/shop.ts`): authorize URL,
+  code→long-lived token exchange, `refreshTokenIfNeeded`, `listRecentMedia`, `getMediaInsights`
+  (IG `saved`→saves; absent metrics degrade to null), `getAccount`.
+- `app/api/instagram/callback/route.ts` (proxy-protected → only an authed admin completes it) +
+  `InstagramConnect.tsx` on the Settings page. Daily `app/api/cron/instagram-sync/route.ts`
+  (CRON_SECRET, `maxDuration=300`) registered in `vercel.json` (`0 3 * * *`).
+- Engagement page → read-only synced performance view (permalink links, "synced ✓" badge); the
+  manual `NumbersForm` stays as a fallback for metrics IG omits; Subscribers section kept.
+- Insights gains a follower-growth sparkline and uses real publish day for weekday ranking.
+
+**Verify:** `npx tsc --noEmit` clean; `npm run build` green (routes `/api/instagram/callback`,
+`/api/cron/instagram-sync` present; `/review`, `/api/content`, `/api/posts` gone). End-to-end:
+connect a Creator account on `/settings` → run `curl -H "Authorization: Bearer $CRON_SECRET"
+<domain>/api/cron/instagram-sync` → recent media appear as `posted` posts with real publish time
++ metrics; follower snapshot recorded; banner self-clears. Disconnect / bad token → 200 no-op,
+manual form still works.
+
+**Ops:** **new env vars `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` / `INSTAGRAM_REDIRECT_URI`**
+— placeholders in `.env.local`, in `scripts/vercel-env.sh`, documented in `DEPLOY.md` §3 (incl.
+the one-time Meta app + Creator-account setup). New cron in `vercel.json`. Requires the IG account
+converted to Professional/Creator.

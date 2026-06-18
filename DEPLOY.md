@@ -60,13 +60,20 @@ bash scripts/vercel-env.sh production
 
 Vars set: `DATABASE_URL` (pooled 6543), `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`,
 `ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`ALLOWED_EMAILS`, `STRIPE_SECRET_KEY`.
+`ALLOWED_EMAILS`, `STRIPE_SECRET_KEY`, `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`,
+`INSTAGRAM_REDIRECT_URI`.
 
 > **`STRIPE_SECRET_KEY` (Item #3 shop sync)** — create a **restricted, read-only** key in the
 > Stripe Dashboard (*Developers → API keys → Create restricted key*) with **Read** permission on
 > **Products** (and **Prices**) and nothing else. The daily `shop-sync` cron only lists the
 > catalog; it never writes to Stripe. Sync is fail-soft: a missing/invalid key just no-ops and
 > leaves the manual product CRUD working.
+
+> **`INSTAGRAM_*` (Item #1 stats auto-pull)** — these three come from a one-time Meta app +
+> Creator-account setup. The full self-contained walkthrough is in **`INSTAGRAM_SETUP.md`**
+> (do it whenever; the rest of the app works without it). The access token is stored in the DB
+> (not env), the daily `instagram-sync` cron refreshes it, and the sync is fail-soft — not
+> connected / API error just no-ops and the manual numbers form keeps working.
 
 > Preview deployments won't have these secrets (production scope only) — that's
 > deliberate: previews can't spend API budget or touch the prod DB. Add `preview` scope
@@ -112,14 +119,16 @@ vercel --prod          # CLI path
 
 1. Visit the URL → redirected to `/login`.
 2. Sign in with an allow-listed email → magic link → lands on `/calendar`.
-3. Walk `/calendar → /review → /engagement`; banners render; data loads.
+3. Walk `/calendar → /engagement → /insights → /settings`; banners render; data loads.
 4. "Run weekly plan now" completes within 300s and writes calendar slots.
-5. Cron route responds to the secret (Vercel sends it; this is the manual equivalent):
+5. On `/settings`, click **Connect Instagram** → authorize → returns "Connected as @…".
+6. Cron routes respond to the secret (Vercel sends it; this is the manual equivalent):
    ```bash
-   curl -i https://<domain>/api/cron/weekly-strategy \
-     -H "Authorization: Bearer $CRON_SECRET"
+   curl -i https://<domain>/api/cron/weekly-strategy -H "Authorization: Bearer $CRON_SECRET"
+   curl -i https://<domain>/api/cron/instagram-sync  -H "Authorization: Bearer $CRON_SECRET"
    ```
-   Expect 200 + a fresh week of slots; without the header expect 401.
+   Strategy: 200 + a fresh week of slots. Instagram: 200 + `{ingested, statsSynced, followers}`;
+   your recent posts appear on `/engagement` with synced metrics. Without the header: 401.
 
 ---
 
@@ -130,7 +139,9 @@ vercel --prod          # CLI path
   for a weekly plan.
 - **Supabase free tier pauses after ~7 days idle:** her weekly use + the weekly cron should
   keep it warm; if it pauses, add a keep-alive cron or go Supabase Pro.
-- **Body limit:** uploads go browser→Supabase direct (signed URL), never through a function.
+- **Instagram token:** long-lived tokens last ~60 days; the daily `instagram-sync` cron refreshes
+  them before expiry. If the app sits unused past ~60 days the token lapses — just click
+  **Connect Instagram** again.
 
 ---
 

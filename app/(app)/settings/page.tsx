@@ -1,16 +1,33 @@
-import { getBrandVoice, getSettings } from "@/lib/db";
+import { getBrandVoice, getInstagramAccount, getSettings } from "@/lib/db";
+import { authorizeUrl } from "@/lib/instagram";
 
 import BrandVoiceForm from "../_components/BrandVoiceForm";
+import InstagramConnect from "../_components/InstagramConnect";
 import SettingsForm from "../_components/SettingsForm";
 
-export default async function SettingsPage() {
-  const [settings, brandVoice] = await Promise.all([getSettings(), getBrandVoice()]);
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ig?: string }>;
+}) {
+  const [{ ig }, settings, brandVoice, instagram] = await Promise.all([
+    searchParams,
+    getSettings(),
+    getBrandVoice(),
+    getInstagramAccount(),
+  ]);
+
   return (
     <main>
       <h1>⚙️ Settings</h1>
       <p className="muted">
-        The tuning knobs the three agents read each run — plus the brand voice they mirror.
+        The tuning knobs the Strategy Agent reads each run — plus the brand voice it mirrors.
       </p>
+
+      {ig === "connected" && <p className="ok">✅ Instagram connected.</p>}
+      {ig === "error" && (
+        <p className="err">Couldn&apos;t connect Instagram — please try again.</p>
+      )}
 
       {settings ? (
         <SettingsForm settings={settings} />
@@ -20,10 +37,7 @@ export default async function SettingsPage() {
 
       <BrandVoiceForm brandVoice={brandVoice} />
 
-      {/*
-        Item #1 (Instagram stats auto-pull) will add a "Connect Instagram" button here,
-        backed by the OAuth callback route. Deferred until that item is built.
-      */}
+      <InstagramConnect account={instagram} authorizeUrl={authorizeUrl()} />
     </main>
   );
 }

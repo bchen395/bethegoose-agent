@@ -1,5 +1,14 @@
 # FEATURES.md — Post-migration feature work
 
+> **⚠ Superseded in places (2026-06-17).** A later simplification removed the Review
+> section, photo upload, and the **Content** and **Distribution** agents; posting and CTAs
+> are now manual, and **Instagram is the source of posted rows** (the daily sync ingests
+> media + metrics — see `AUTOMATION_PLAN.md` Item #1 and the 2026-06-17 entry in
+> `PROGRESS.md`). Where this file describes the attach-art → generate-draft → review →
+> approve → mark-posted → type-the-numbers loop (esp. §3), that flow no longer exists —
+> metrics auto-sync, with the manual form only as a fallback. The §1 schema, §2 insights,
+> §4 subscribers, §5–§7 tunables, and §8 reuse still hold. §9 caption-starters was removed.
+
 Feature changes layered on top of the hosted TypeScript stack from `MIGRATION.md`.
 These are **behavior changes**, not a port. They ship **after** the migration cutover
 (MIGRATION.md §12, Step 9) so they're built once, on the new stack, against real

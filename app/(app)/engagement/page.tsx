@@ -1,9 +1,7 @@
 import Link from "next/link";
 
-import { getPostsByStatus, getPostsMissingEngagement, getRecentPosted } from "@/lib/db";
-import { signedDisplayUrl } from "@/lib/storage";
+import { getPostsMissingEngagement, getRecentPosted, type Post } from "@/lib/db";
 import { FORMAT_BADGE, badge } from "../_lib/format";
-import MarkPostedButton from "../_components/MarkPostedButton";
 import NumbersForm from "../_components/NumbersForm";
 import SubscriberForm, { type PostOption } from "../_components/SubscriberForm";
 
@@ -14,105 +12,97 @@ function postLabel(post: { id: number; format: string | null; caption: string | 
   return `#${post.id} ${fmt}${cap}`;
 }
 
-async function artUrlFor(key: string | null): Promise<string | null> {
-  if (!key) return null;
-  try {
-    return await signedDisplayUrl(key);
-  } catch {
-    return null;
-  }
+/** Posted date, preferring the real IG publish time. */
+function postedOn(post: Post): string | null {
+  const ts = post.publishedAt ?? post.postedAt;
+  return ts ? ts.slice(0, 10) : null;
+}
+
+function metricLine(post: Post): string {
+  const cell = (label: string, v: number | null) => `${label} ${v ?? "—"}`;
+  return [
+    cell("reach", post.reach),
+    cell("saves", post.saves),
+    cell("shares", post.shares),
+    cell("likes", post.likes),
+    cell("comments", post.comments),
+  ].join("  ·  ");
 }
 
 export default async function EngagementPage() {
-  const [approved, missing, recentPosted] = await Promise.all([
-    getPostsByStatus("approved"),
-    getPostsMissingEngagement(),
+  const [recentPosted, missing] = await Promise.all([
     getRecentPosted(20),
+    getPostsMissingEngagement(),
   ]);
 
   const postOptions: PostOption[] = recentPosted.map((p) => ({ id: p.id, label: postLabel(p) }));
 
-  const approvedCards = await Promise.all(
-    approved.map(async (p) => ({ post: p, artUrl: await artUrlFor(p.artFilename) })),
-  );
-  const missingCards = await Promise.all(
-    missing.map(async (p) => ({ post: p, artUrl: await artUrlFor(p.artFilename) })),
-  );
-
   return (
     <main>
       <h1>📊 Engagement</h1>
+      <p className="muted">
+        Posts and their numbers sync from Instagram daily — no typing needed. The form lower down is
+        a manual fallback for anything the API didn&apos;t return.
+      </p>
 
-      <h2>Ready to post</h2>
-      {approvedCards.length === 0 && <p className="muted">Nothing approved right now.</p>}
-      {approvedCards.map(({ post, artUrl }) => (
-        <div className="card" key={post.id}>
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <div className="muted" style={{ fontSize: 13 }}>
-                {badge(FORMAT_BADGE, post.format)} · approved #{post.id}
-              </div>
-              {post.postingChecklist ? (
-                <pre className="checklist">{post.postingChecklist}</pre>
-              ) : (
-                <p className="muted">
-                  No posting checklist yet — it appears once the Distribution Agent runs.
-                </p>
-              )}
-              {post.caption && (
-                <details>
-                  <summary>Caption</summary>
-                  <p style={{ whiteSpace: "pre-wrap" }}>{post.caption}</p>
-                </details>
-              )}
-              <div style={{ marginTop: 8 }}>
-                <MarkPostedButton postId={post.id} />
-              </div>
+      <h2>Recent posts</h2>
+      {recentPosted.length === 0 ? (
+        <p className="muted">
+          No posts synced yet. Connect Instagram in <Link href="/settings">Settings</Link>; the daily
+          sync then pulls your recent posts and their metrics.
+        </p>
+      ) : (
+        recentPosted.map((post) => (
+          <div className="card" key={post.id}>
+            <div className="muted" style={{ fontSize: 13 }}>
+              {badge(FORMAT_BADGE, post.format)} · #{post.id}
+              {postedOn(post) ? ` · ${postedOn(post)}` : ""}
+              {post.statsSyncedAt ? " · synced from Instagram ✓" : ""}
             </div>
-            {artUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={artUrl} alt="art" style={{ width: 110, borderRadius: 6 }} />
+            {post.caption && (
+              <p style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>
+                {post.caption.slice(0, 180)}
+                {post.caption.length > 180 ? "…" : ""}
+              </p>
+            )}
+            <div className="muted" style={{ fontSize: 13 }}>{metricLine(post)}</div>
+            {post.permalink && (
+              <a href={post.permalink} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+                View on Instagram ↗
+              </a>
             )}
           </div>
-        </div>
-      ))}
+        ))
+      )}
 
       <hr style={{ margin: "20px 0", border: "none", borderTop: "1px solid var(--border)" }} />
 
-      <h2>Enter numbers</h2>
-      {missingCards.length === 0 ? (
+      <h2>Enter numbers (manual fallback)</h2>
+      {missing.length === 0 ? (
         <p className="muted">Every posted item has its numbers. 🎉</p>
       ) : (
-        missingCards.map(({ post, artUrl }) => (
+        missing.map((post) => (
           <div className="card" key={post.id}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ flex: 1, minWidth: 240 }}>
-                <div className="muted" style={{ fontSize: 13 }}>
-                  {badge(FORMAT_BADGE, post.format)} · posted #{post.id}
-                  {post.postedAt ? ` · ${post.postedAt}` : ""}
-                </div>
-                {post.caption && (
-                  <p className="muted" style={{ fontSize: 13 }}>
-                    {post.caption.slice(0, 120)}
-                    {post.caption.length > 120 ? "…" : ""}
-                  </p>
-                )}
-                <NumbersForm
-                  postId={post.id}
-                  initial={{
-                    saves: post.saves,
-                    reach: post.reach,
-                    likes: post.likes,
-                    comments: post.comments,
-                    shares: post.shares,
-                  }}
-                />
-              </div>
-              {artUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={artUrl} alt="art" style={{ width: 110, borderRadius: 6 }} />
-              )}
+            <div className="muted" style={{ fontSize: 13 }}>
+              {badge(FORMAT_BADGE, post.format)} · posted #{post.id}
+              {postedOn(post) ? ` · ${postedOn(post)}` : ""}
             </div>
+            {post.caption && (
+              <p className="muted" style={{ fontSize: 13 }}>
+                {post.caption.slice(0, 120)}
+                {post.caption.length > 120 ? "…" : ""}
+              </p>
+            )}
+            <NumbersForm
+              postId={post.id}
+              initial={{
+                saves: post.saves,
+                reach: post.reach,
+                likes: post.likes,
+                comments: post.comments,
+                shares: post.shares,
+              }}
+            />
           </div>
         ))
       )}
