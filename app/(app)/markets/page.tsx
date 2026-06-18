@@ -1,6 +1,7 @@
 import { getAllMarkets } from "@/lib/db";
 
 import MarketForm from "../_components/MarketForm";
+import MarketRow from "../_components/MarketRow";
 
 export default async function MarketsPage() {
   const markets = await getAllMarkets();
@@ -19,7 +20,11 @@ export default async function MarketsPage() {
       {markets.length === 0 ? (
         <p className="muted">No markets yet — add one above.</p>
       ) : (
-        markets.map((m) => <MarketForm key={m.id} market={m} />)
+        <div className="read-list">
+          {markets.map((m) => (
+            <MarketRow key={m.id} market={m} />
+          ))}
+        </div>
       )}
     </main>
   );

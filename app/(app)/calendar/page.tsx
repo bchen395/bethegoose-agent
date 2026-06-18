@@ -36,6 +36,26 @@ export default async function CalendarPage({
   const prev = monday.minus({ days: 7 }).toISODate();
   const next = monday.plus({ days: 7 }).toISODate();
 
+  const byDate = new Map<string, SlotCardData[]>();
+  for (const c of cards) {
+    const day = byDate.get(c.slotDate) ?? [];
+    day.push(c);
+    byDate.set(c.slotDate, day);
+  }
+
+  const todayDate = today.toISODate()!;
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = monday.plus({ days: i });
+    const iso = d.toISODate()!;
+    return {
+      d,
+      iso,
+      daySlots: byDate.get(iso) ?? [],
+      isToday: isThisWeek && iso === todayDate,
+      isPast: isThisWeek && iso < todayDate,
+    };
+  });
+
   return (
     <main>
       <h1>📅 Weekly calendar</h1>
@@ -63,7 +83,32 @@ export default async function CalendarPage({
           No plan for this week yet. Click <strong>Run weekly plan now</strong> to generate one.
         </p>
       ) : (
-        cards.map((c) => <SlotCard key={c.id} slot={c} />)
+        <div className="cal-week">
+          {days.map(({ d, iso, daySlots, isToday, isPast }) => (
+            <div
+              key={iso}
+              className={[
+                "cal-day",
+                isToday && "cal-day-today",
+                isPast && "cal-day-past",
+                daySlots.length === 0 && "cal-day-empty",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              <div className="cal-day-head">
+                <span className="cal-day-name">{d.toFormat("ccc")}</span>
+                <span className="cal-day-date tabular">{d.toFormat("LLL d")}</span>
+                {isToday && <span className="chip chip-must cal-today-tag">today</span>}
+              </div>
+              {daySlots.length === 0 ? (
+                <div className="cal-rest">— no post planned</div>
+              ) : (
+                daySlots.map((c) => <SlotCard key={c.id} slot={c} />)
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </main>
   );

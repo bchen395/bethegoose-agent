@@ -61,158 +61,172 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
 
   return (
     <form onSubmit={onSubmit} className="card">
-      <strong>⚙️ Settings</strong>
-      <div className="row" style={{ marginTop: 8, alignItems: "flex-end" }}>
-        <label style={{ flex: 1, minWidth: 200 }}>
-          Timezone (IANA, e.g. America/New_York)
-          <input
-            className="field"
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-          />
-        </label>
-        <label>
-          Default post time
-          <input
-            className="field"
-            type="time"
-            value={defaultPostTime}
-            onChange={(e) => setDefaultPostTime(e.target.value)}
-            style={{ width: 130 }}
-          />
-        </label>
-      </div>
-      <div className="row" style={{ marginTop: 8, alignItems: "flex-end" }}>
-        <label>
-          Hashtags min
-          <input
-            className="field"
-            type="number"
-            min={0}
-            value={hashtagCountMin}
-            onChange={(e) => setHashtagCountMin(e.target.value)}
-            style={{ width: 90 }}
-          />
-        </label>
-        <label>
-          Hashtags max
-          <input
-            className="field"
-            type="number"
-            min={0}
-            value={hashtagCountMax}
-            onChange={(e) => setHashtagCountMax(e.target.value)}
-            style={{ width: 90 }}
-          />
-        </label>
-      </div>
+      <fieldset className="field-group">
+        <legend>Scheduling</legend>
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <label style={{ flex: 1, minWidth: 200 }}>
+            Timezone (IANA, e.g. America/New_York)
+            <input
+              className="field"
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+            />
+          </label>
+          <label>
+            Default post time
+            <input
+              className="field"
+              type="time"
+              value={defaultPostTime}
+              onChange={(e) => setDefaultPostTime(e.target.value)}
+              style={{ width: 130 }}
+            />
+          </label>
+        </div>
+      </fieldset>
 
-      <p className="muted" style={{ fontSize: 13, marginTop: 12, marginBottom: 4 }}>
-        Weekly mix — how many of each format the Strategy Agent aims for per week.
-      </p>
-      <div className="row" style={{ alignItems: "flex-end" }}>
-        <label>
-          Reels
+      <fieldset className="field-group">
+        <legend>Format mix</legend>
+        <p className="meta" style={{ marginTop: 0 }}>
+          How many of each format the Strategy Agent aims for per week.
+        </p>
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <label>
+            Reels
+            <input
+              className="field"
+              type="number"
+              min={0}
+              value={reel}
+              onChange={(e) => setReel(e.target.value)}
+              style={{ width: 80 }}
+            />
+          </label>
+          <label>
+            Carousels
+            <input
+              className="field"
+              type="number"
+              min={0}
+              value={carousel}
+              onChange={(e) => setCarousel(e.target.value)}
+              style={{ width: 80 }}
+            />
+          </label>
+          <label>
+            Static
+            <input
+              className="field"
+              type="number"
+              min={0}
+              value={staticCount}
+              onChange={(e) => setStaticCount(e.target.value)}
+              style={{ width: 80 }}
+            />
+          </label>
+        </div>
+        <label className="row" style={{ gap: 6, marginTop: 12 }}>
           <input
-            className="field"
-            type="number"
-            min={0}
-            value={reel}
-            onChange={(e) => setReel(e.target.value)}
-            style={{ width: 80 }}
+            type="checkbox"
+            checked={reelsRequired}
+            onChange={(e) => setReelsRequired(e.target.checked)}
           />
+          Require at least one reel each week
         </label>
-        <label>
-          Carousels
-          <input
-            className="field"
-            type="number"
-            min={0}
-            value={carousel}
-            onChange={(e) => setCarousel(e.target.value)}
-            style={{ width: 80 }}
-          />
-        </label>
-        <label>
-          Static
-          <input
-            className="field"
-            type="number"
-            min={0}
-            value={staticCount}
-            onChange={(e) => setStaticCount(e.target.value)}
-            style={{ width: 80 }}
-          />
-        </label>
-      </div>
+      </fieldset>
 
-      <div className="row" style={{ marginTop: 12, alignItems: "flex-end" }}>
-        <label style={{ minWidth: 160 }}>
-          Web-search cadence
-          <select
-            className="field"
-            value={webSearchCadence}
-            onChange={(e) => setWebSearchCadence(e.target.value)}
-          >
-            {WEB_SEARCH_CADENCES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+      <fieldset className="field-group">
+        <legend>Hashtags & captions</legend>
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <label>
+            Hashtags min
+            <input
+              className="field"
+              type="number"
+              min={0}
+              value={hashtagCountMin}
+              onChange={(e) => setHashtagCountMin(e.target.value)}
+              style={{ width: 90 }}
+            />
+          </label>
+          <label>
+            Hashtags max
+            <input
+              className="field"
+              type="number"
+              min={0}
+              value={hashtagCountMax}
+              onChange={(e) => setHashtagCountMax(e.target.value)}
+              style={{ width: 90 }}
+            />
+          </label>
+        </div>
+        <label className="row" style={{ gap: 6, marginTop: 12 }}>
+          <input
+            type="checkbox"
+            checked={captionStartersEnabled}
+            onChange={(e) => setCaptionStartersEnabled(e.target.checked)}
+          />
+          Enable caption starters
         </label>
-        <label>
-          Monthly budget (USD)
+      </fieldset>
+
+      <fieldset className="field-group">
+        <legend>Budget & research</legend>
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <label style={{ minWidth: 160 }}>
+            Web-search cadence
+            <select
+              className="field"
+              value={webSearchCadence}
+              onChange={(e) => setWebSearchCadence(e.target.value)}
+            >
+              {WEB_SEARCH_CADENCES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Monthly budget (USD)
+            <input
+              className="field"
+              type="number"
+              min={0}
+              step="0.01"
+              value={monthlyBudgetUsd}
+              onChange={(e) => setMonthlyBudgetUsd(e.target.value)}
+              style={{ width: 120 }}
+            />
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset className="field-group">
+        <legend>Shop</legend>
+        <label style={{ display: "block" }}>
+          Shop URL (your &ldquo;link in bio&rdquo;)
           <input
             className="field"
-            type="number"
-            min={0}
-            step="0.01"
-            value={monthlyBudgetUsd}
-            onChange={(e) => setMonthlyBudgetUsd(e.target.value)}
-            style={{ width: 120 }}
+            type="url"
+            inputMode="url"
+            placeholder="https://…"
+            value={shopUrl}
+            onChange={(e) => setShopUrl(e.target.value)}
           />
+          <span className="muted text-xs">
+            Used as the shop CTA link when a synced product has no page of its own.
+          </span>
         </label>
-      </div>
-
-      <label style={{ display: "block", marginTop: 12 }}>
-        Shop URL (your &ldquo;link in bio&rdquo;)
-        <input
-          className="field"
-          type="url"
-          inputMode="url"
-          placeholder="https://…"
-          value={shopUrl}
-          onChange={(e) => setShopUrl(e.target.value)}
-        />
-        <span className="muted" style={{ fontSize: 12 }}>
-          Used as the shop CTA link when a synced product has no page of its own.
-        </span>
-      </label>
-
-      <label className="row" style={{ gap: 6, marginTop: 12 }}>
-        <input
-          type="checkbox"
-          checked={reelsRequired}
-          onChange={(e) => setReelsRequired(e.target.checked)}
-        />
-        Require at least one reel each week
-      </label>
-      <label className="row" style={{ gap: 6, marginTop: 8 }}>
-        <input
-          type="checkbox"
-          checked={captionStartersEnabled}
-          onChange={(e) => setCaptionStartersEnabled(e.target.checked)}
-        />
-        Enable caption starters
-      </label>
+      </fieldset>
 
       <div className="row" style={{ marginTop: 12 }}>
         <button className="btn btn-primary" type="submit" disabled={busy}>
           💾 Save settings
         </button>
       </div>
-      {ok && <p style={{ color: "#2f7d32", fontSize: 13 }}>{ok}</p>}
+      {ok && <p className="ok">{ok}</p>}
       {error && <p className="err">{error}</p>}
     </form>
   );

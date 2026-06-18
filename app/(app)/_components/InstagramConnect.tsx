@@ -16,7 +16,7 @@ export default function InstagramConnect({
   return (
     <section style={{ marginTop: 28 }}>
       <h2>📸 Instagram</h2>
-      <p className="muted" style={{ fontSize: 13 }}>
+      <p className="meta">
         Connect your Creator account to auto-pull post metrics and follower count. Posting and
         captions stay manual — this only reads your insights.
       </p>
@@ -27,7 +27,7 @@ export default function InstagramConnect({
             ✅ Connected{account.username ? ` as @${account.username}` : ""}
             {account.followersCount != null ? ` · ${account.followersCount} followers` : ""}
           </div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+          <div className="meta" style={{ marginTop: 4 }}>
             Last synced: {account.syncedAt ?? "not yet — runs daily, or trigger the sync cron"}
           </div>
           {authorizeUrl && (

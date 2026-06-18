@@ -46,7 +46,7 @@ export default function BrandVoiceForm({ brandVoice }: { brandVoice: BrandVoice 
   return (
     <form onSubmit={onSubmit} className="card">
       <strong>🎨 Brand voice</strong>
-      <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+      <p className="muted text-sm" style={{ marginTop: 4 }}>
         Guides how the agents write CTAs and market blurbs. The agents never write captions — they
         only mirror this voice.
       </p>
@@ -99,7 +99,7 @@ export default function BrandVoiceForm({ brandVoice }: { brandVoice: BrandVoice 
           💾 Save brand voice
         </button>
       </div>
-      {ok && <p style={{ color: "#2f7d32", fontSize: 13 }}>{ok}</p>}
+      {ok && <p className="ok">{ok}</p>}
       {error && <p className="err">{error}</p>}
     </form>
   );

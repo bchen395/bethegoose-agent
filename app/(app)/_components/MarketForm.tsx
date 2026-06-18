@@ -5,18 +5,18 @@ import { useState } from "react";
 
 import { createMarket, deleteMarketAction, updateMarketAction } from "@/app/actions";
 import type { Market } from "@/lib/db";
-import { MARKET_STATUSES } from "../_lib/format";
-
-const STATUS_LABELS: Record<string, string> = {
-  considering: "Considering",
-  applied: "Applied",
-  accepted: "Accepted",
-  rejected: "Rejected",
-  attended: "Attended",
-};
+import { MARKET_STATUSES, STATUS_LABELS } from "../_lib/format";
 
 /** Add (no `market`) or edit (with `market`) a single market row. */
-export default function MarketForm({ market }: { market?: Market }) {
+export default function MarketForm({
+  market,
+  onSaved,
+  onCancel,
+}: {
+  market?: Market;
+  onSaved?: () => void;
+  onCancel?: () => void;
+}) {
   const router = useRouter();
   const editing = market != null;
   const [name, setName] = useState(market?.name ?? "");
@@ -43,6 +43,7 @@ export default function MarketForm({ market }: { market?: Market }) {
       if (editing) {
         await updateMarketAction(market!.id, data);
         setOk("Saved.");
+        onSaved?.();
       } else {
         await createMarket(data);
         setName("");
@@ -142,8 +143,13 @@ export default function MarketForm({ market }: { market?: Market }) {
             🗑 Delete
           </button>
         )}
+        {onCancel && (
+          <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        )}
       </div>
-      {ok && <p style={{ color: "#2f7d32", fontSize: 13 }}>{ok}</p>}
+      {ok && <p className="ok">{ok}</p>}
       {error && <p className="err">{error}</p>}
     </form>
   );

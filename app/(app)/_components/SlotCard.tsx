@@ -17,14 +17,18 @@ export type SlotCardData = {
 
 export default function SlotCard({ slot }: { slot: SlotCardData }) {
   return (
-    <div className="card">
-      <div className="muted" style={{ fontSize: 13 }}>
-        <strong>{slot.slotDate}</strong> · {slot.slotTime || "—"} ·{" "}
-        {badge(FORMAT_BADGE, slot.format)} ·{" "}
-        {slot.priority === 1 ? "⭐ must-post" : "nice to have"}
+    <div className="slot">
+      <div className="slot-tags">
+        {slot.format && (
+          <span className={`chip chip-fmt-${slot.format}`}>{badge(FORMAT_BADGE, slot.format)}</span>
+        )}
+        <span className={slot.priority === 1 ? "chip chip-must" : "chip chip-nice"}>
+          {slot.priority === 1 ? "must-post" : "nice to have"}
+        </span>
+        {slot.slotTime && <span className="meta tabular slot-time">{slot.slotTime}</span>}
       </div>
-      {slot.theme && <div style={{ fontWeight: 600, marginTop: 4 }}>{slot.theme}</div>}
-      {slot.contentIdea && <div>{slot.contentIdea}</div>}
+      {slot.theme && <div className="slot-theme">{slot.theme}</div>}
+      {slot.contentIdea && <div className="text-sm">{slot.contentIdea}</div>}
     </div>
   );
 }

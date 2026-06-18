@@ -54,20 +54,20 @@ export default async function EngagementPage() {
       ) : (
         recentPosted.map((post) => (
           <div className="card" key={post.id}>
-            <div className="muted" style={{ fontSize: 13 }}>
+            <div className="meta">
               {badge(FORMAT_BADGE, post.format)} · #{post.id}
               {postedOn(post) ? ` · ${postedOn(post)}` : ""}
               {post.statsSyncedAt ? " · synced from Instagram ✓" : ""}
             </div>
             {post.caption && (
-              <p style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>
+              <p className="text-md" style={{ whiteSpace: "pre-wrap" }}>
                 {post.caption.slice(0, 180)}
                 {post.caption.length > 180 ? "…" : ""}
               </p>
             )}
-            <div className="muted" style={{ fontSize: 13 }}>{metricLine(post)}</div>
+            <div className="meta">{metricLine(post)}</div>
             {post.permalink && (
-              <a href={post.permalink} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+              <a href={post.permalink} target="_blank" rel="noreferrer" className="text-sm">
                 View on Instagram ↗
               </a>
             )}
@@ -83,12 +83,12 @@ export default async function EngagementPage() {
       ) : (
         missing.map((post) => (
           <div className="card" key={post.id}>
-            <div className="muted" style={{ fontSize: 13 }}>
+            <div className="meta">
               {badge(FORMAT_BADGE, post.format)} · posted #{post.id}
               {postedOn(post) ? ` · ${postedOn(post)}` : ""}
             </div>
             {post.caption && (
-              <p className="muted" style={{ fontSize: 13 }}>
+              <p className="meta">
                 {post.caption.slice(0, 120)}
                 {post.caption.length > 120 ? "…" : ""}
               </p>
@@ -111,7 +111,7 @@ export default async function EngagementPage() {
 
       <h2>Subscribers</h2>
       <SubscriberForm posts={postOptions} />
-      <p className="muted" style={{ fontSize: 13 }}>
+      <p className="meta">
         See which CTA types convert in the <Link href="/insights">Insights view</Link>.
       </p>
     </main>

@@ -29,63 +29,47 @@ export default function LoginPage() {
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("denied");
 
   return (
-    <main style={{ maxWidth: 420, margin: "12vh auto", padding: "0 20px" }}>
-      <h1 style={{ fontSize: 24, marginBottom: 4 }}>🎨 Art Business Agent</h1>
-      <p style={{ color: "var(--muted)", marginTop: 0 }}>Sign in to plan, prep, and track posts.</p>
+    <main className="login-bg">
+      <div className="login-card">
+        <h1 style={{ marginTop: 0 }}>🎨 Art Business Agent</h1>
+        <p className="muted" style={{ marginTop: 0 }}>Sign in to plan, prep, and track posts.</p>
 
-      {denied && (
-        <p style={{ color: "#b4612f" }}>
-          That account isn’t on the allow-list. Ask the owner to add your email.
-        </p>
-      )}
-
-      {status === "sent" ? (
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            padding: 16,
-            background: "var(--card)",
-          }}
-        >
-          <strong>Check your email.</strong>
-          <p style={{ marginBottom: 0 }}>
-            We sent a magic sign-in link to <b>{email}</b>. Open it on this device.
+        {denied && (
+          <p className="err">
+            That account isn’t on the allow-list. Ask the owner to add your email.
           </p>
-        </div>
-      ) : (
-        <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 10 }}>
-          <input
-            type="email"
-            required
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 8,
-              border: "1px solid var(--border)",
-              fontSize: 16,
-            }}
-          />
-          <button
-            type="submit"
-            disabled={status === "sending"}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 8,
-              border: "none",
-              background: "var(--accent)",
-              color: "#fff",
-              fontSize: 16,
-              cursor: "pointer",
-            }}
-          >
-            {status === "sending" ? "Sending…" : "Email me a magic link"}
-          </button>
-          {status === "error" && <p style={{ color: "#b4612f" }}>{message}</p>}
-        </form>
-      )}
+        )}
+
+        {status === "sent" ? (
+          <div className="card">
+            <strong>Check your email.</strong>
+            <p style={{ marginBottom: 0 }}>
+              We sent a magic sign-in link to <b>{email}</b>. Open it on this device.
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 10 }}>
+            <input
+              type="email"
+              required
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="field"
+              style={{ fontSize: 16 }}
+            />
+            <button
+              type="submit"
+              disabled={status === "sending"}
+              className="btn btn-primary"
+              style={{ justifyContent: "center", fontSize: 16, padding: "10px 12px" }}
+            >
+              {status === "sending" ? "Sending…" : "Email me a magic link"}
+            </button>
+            {status === "error" && <p className="err">{message}</p>}
+          </form>
+        )}
+      </div>
     </main>
   );
 }

@@ -1,14 +1,46 @@
 :root {
+  /* Surfaces & ink — one warm gray family */
   --bg: #fafaf7;
   --fg: #1f1d1a;
   --muted: #6b6660;
   --border: #e4e0d8;
-  --accent: #b4612f;
   --card: #ffffff;
+
+  /* One accent (terracotta) + one success green + one danger red.
+     Error is a distinct red hue so it never reads as the orange brand accent. */
+  --accent: #b4612f;
+  --accent-hover: #9a4f24;
+  --ok: #3f7d4f; /* success text AND data-viz lines — a single green, not two */
+  --danger: #b23b3b;
+  --danger-tint: #fbeceb;
+
+  /* Type — display serif for headings, warm grotesk for body (set by next/font) */
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --fs-xs: 0.75rem; /* 12px */
+  --fs-sm: 0.8125rem; /* 13px */
+  --fs-md: 0.875rem; /* 14px */
+  --fs-base: 1rem; /* 16px */
+
+  /* Radius, shadow, motion — shadows tinted warm to match the cream surface */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(58, 40, 24, 0.05), 0 1px 3px rgba(58, 40, 24, 0.05);
+  --shadow: 0 2px 6px rgba(58, 40, 24, 0.06), 0 8px 24px rgba(58, 40, 24, 0.08);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --t-fast: 120ms var(--ease);
+  --t: 180ms var(--ease);
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 html,
@@ -17,14 +49,77 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  line-height: 1.5;
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* --- Type scale ----------------------------------------------------------- */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(1.7rem, 1.4rem + 1.3vw, 2.1rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem;
+}
+
+h2 {
+  font-size: 1.3rem;
+  line-height: 1.18;
+  letter-spacing: -0.012em;
+  margin: 1.75rem 0 0.5rem;
+}
+
+h3 {
+  font-size: 1.02rem;
+  letter-spacing: -0.006em;
+  margin: 1rem 0 0.35rem;
+}
+
+p {
+  max-width: 68ch; /* keep body copy at a readable measure */
+  text-wrap: pretty; /* avoid orphaned last-line words */
 }
 
 a {
   color: var(--accent);
+  text-decoration: none;
+  transition: color var(--t-fast);
 }
 
+a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+a:focus-visible {
+  outline: none;
+  border-radius: 3px;
+  box-shadow: var(--ring);
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  font-size: 0.92em;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+}
+
+/* --- Shell ---------------------------------------------------------------- */
 .container {
   max-width: 920px;
   margin: 0 auto;
@@ -34,6 +129,9 @@ a {
 .topbar {
   border-bottom: 1px solid var(--border);
   background: var(--card);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .topbar-inner {
@@ -43,12 +141,14 @@ a {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .nav {
   display: flex;
   gap: 14px;
   flex: 1;
+  flex-wrap: wrap;
 }
 
 .nav a {
@@ -56,6 +156,13 @@ a {
   color: var(--fg);
   padding: 4px 2px;
   border-bottom: 2px solid transparent;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+
+.nav a:hover {
+  color: var(--accent);
+  border-bottom-color: var(--border);
+  text-decoration: none;
 }
 
 .nav a.active {
@@ -63,9 +170,17 @@ a {
   color: var(--accent);
 }
 
+.nav a:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--ring);
+}
+
+/* --- Banners -------------------------------------------------------------- */
 .banner {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-left: 3px solid var(--accent); /* default = brand nudge */
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   margin: 10px 0;
   background: #fff7ec;
@@ -73,33 +188,90 @@ a {
 
 .banner.info {
   background: #eef4fb;
+  border-color: #d6e3f1;
+  border-left-color: #6c8bb0;
 }
 
+.banner.warn {
+  background: var(--danger-tint);
+  border-color: #e9c4c1;
+  border-left-color: var(--danger);
+}
+
+/* Collapsed multi-item alert (e.g. several market deadlines in one banner). */
+.banner-list {
+  margin: 6px 0 0;
+  padding-left: 1.1rem;
+}
+
+.banner-list li {
+  margin: 2px 0;
+}
+
+/* --- Cards ---------------------------------------------------------------- */
 .card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 14px;
   margin: 12px 0;
   background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+/* A card nested in a card is a grouping, not a second elevation. */
+.card .card {
+  box-shadow: none;
 }
 
 .muted {
   color: var(--muted);
 }
 
+/* --- Buttons -------------------------------------------------------------- */
 .btn {
-  padding: 8px 12px;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: #fff;
   color: var(--fg);
-  font-size: 14px;
+  font-family: inherit;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
   cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast),
+    transform var(--t-fast), box-shadow var(--t-fast), color var(--t-fast);
+}
+
+.btn:hover {
+  background: #f5f2ec;
+  border-color: #d6d1c7;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.btn:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+}
+
+.btn:disabled:hover {
+  background: #fff;
+  border-color: var(--border);
 }
 
 .btn-primary {
@@ -108,13 +280,51 @@ a {
   border-color: var(--accent);
 }
 
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+.btn-primary:disabled:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* --- Form controls -------------------------------------------------------- */
 .field {
   width: 100%;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-family: inherit;
+  background: #fff;
+  color: var(--fg);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.field:hover {
+  border-color: #d6d1c7;
+}
+
+.field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.field::placeholder {
+  color: #a8a29a;
+}
+
+form label {
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+
+label .field {
+  margin-top: 4px;
 }
 
 .row {
@@ -124,20 +334,442 @@ a {
   flex-wrap: wrap;
 }
 
+/* Grouped form section (settings) — a labeled band, not a boxed fieldset. */
+.field-group {
+  min-inline-size: 0; /* cancel the fieldset min-width quirk that breaks flex children */
+  border: none;
+  border-top: 1px solid var(--border);
+  padding: 16px 0 4px;
+  margin: 0;
+}
+
+.field-group:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.field-group legend {
+  padding: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.02rem;
+  letter-spacing: -0.006em;
+}
+
 pre.checklist {
   white-space: pre-wrap;
   background: #f5f3ee;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 10px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
+}
+
+/* --- Text utilities ------------------------------------------------------- */
+.text-sm {
+  font-size: var(--fs-sm);
+}
+
+.text-xs {
+  font-size: var(--fs-xs);
+}
+
+.text-md {
+  font-size: var(--fs-md);
+}
+
+.meta {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 .err {
-  color: #b4612f;
-  font-size: 13px;
+  color: var(--danger);
+  font-size: var(--fs-sm);
 }
 
 .ok {
-  color: #3f7d4f;
-  font-size: 13px;
+  color: var(--ok);
+  font-size: var(--fs-sm);
+}
+
+/* --- Chips ---------------------------------------------------------------- */
+/* Shared categorical tags (calendar formats/priority now; statuses in later
+   steps). Square-ish, not pill-shaped, and desaturated so they categorize
+   without competing with the brand accent. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* One tint per post format. */
+.chip-fmt-reel {
+  background: color-mix(in srgb, var(--accent) 14%, var(--card));
+  color: var(--accent-hover);
+}
+
+.chip-fmt-carousel {
+  background: #f3ecd6;
+  color: #856516;
+}
+
+.chip-fmt-static {
+  background: #e8edf2;
+  color: #455d76;
+}
+
+.chip-fmt-story {
+  background: #e6efe7;
+  color: #356a44;
+}
+
+/* Priority: a "must-post" reads as a filled accent, "nice to have" as a quiet outline. */
+.chip-must {
+  background: var(--accent);
+  color: #fff;
+}
+
+.chip-nice {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--border);
+}
+
+/* Generic semantic variants — shared by product type / market status chips. */
+.chip-accent {
+  background: color-mix(in srgb, var(--accent) 14%, var(--card));
+  color: var(--accent-hover);
+}
+
+.chip-ok {
+  background: #e6efe7;
+  color: var(--ok);
+}
+
+.chip-muted {
+  background: #f0ede7;
+  color: var(--muted);
+}
+
+.chip-danger {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+/* --- Weekly calendar ------------------------------------------------------ */
+.cal-week {
+  display: grid;
+  grid-template-columns: 1fr; /* mobile: 7 stacked days */
+  gap: 12px;
+  margin-top: 14px;
+}
+
+@media (min-width: 720px) {
+  .cal-week {
+    grid-template-columns: 1fr 1fr; /* 2-up grid on wider screens */
+  }
+}
+
+.cal-day {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 96px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.cal-day-today {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--card));
+}
+
+.cal-day-past {
+  opacity: 0.6;
+}
+
+/* An empty day is a rest-row, not an elevated card. */
+.cal-day-empty {
+  background: transparent;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.cal-day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cal-day-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.cal-day-date {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.cal-today-tag {
+  margin-left: auto;
+}
+
+.cal-rest {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* A single planned slot inside a day cell (display-only, no actions). */
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.slot:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.slot-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.slot-time {
+  margin-left: auto;
+}
+
+.slot-theme {
+  font-weight: 600;
+}
+
+/* --- Read rows (scannable list with inline edit) -------------------------- */
+.read-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  margin: 12px 0;
+  overflow: hidden;
+}
+
+/* The form expands inline in place of a row, so drop its own card chrome. */
+.read-list > .card {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  border-top: 1px solid var(--border);
+}
+
+.read-list > :first-child {
+  border-top: none;
+}
+
+.read-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  transition: background var(--t-fast);
+}
+
+.read-row:hover {
+  background: #faf8f3;
+}
+
+.read-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.read-row-name {
+  font-weight: 600;
+}
+
+.read-row-inactive {
+  opacity: 0.55;
+}
+
+/* --- Insights dashboard --------------------------------------------------- */
+.insights-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.insights-grid > .card {
+  margin: 0;
+}
+
+@media (min-width: 720px) {
+  .insights-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .insights-grid .span-2 {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Data table — replaces ad-hoc inline <table> styling. */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-md);
+}
+
+.data-table thead th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 0 10px 6px 0;
+}
+
+.data-table tbody td {
+  padding: 8px 10px 8px 0;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+
+/* A bar (in-cell score meter, weekday chart) — one neutral track, ok-green fill. */
+.bar-track {
+  display: block;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: #ece8e0;
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ok);
+}
+
+.bar-fill-top {
+  background: var(--accent);
+}
+
+.data-table .bar-track {
+  margin-top: 5px;
+  max-width: 140px;
+}
+
+/* Horizontal weekday bar chart: label | track | value. */
+.weekday-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 4px 0 10px;
+}
+
+.weekday-bar {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.weekday-bar-label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.weekday-bar-val {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* Follower sparkline (SSR-only SVG). */
+.sparkline {
+  display: block;
+  margin-top: 4px;
+}
+
+.sparkline-line {
+  stroke: var(--ok);
+}
+
+.sparkline-area {
+  fill: color-mix(in srgb, var(--ok) 16%, transparent);
+  stroke: none;
+}
+
+.sparkline-dot {
+  fill: var(--ok);
+}
+
+/* --- Login ---------------------------------------------------------------- */
+.login-bg {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  position: relative;
+  isolation: isolate;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(62% 55% at 16% 12%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 70%),
+    radial-gradient(55% 50% at 88% 90%, color-mix(in srgb, var(--ok) 14%, transparent), transparent 72%),
+    radial-gradient(75% 60% at 78% 6%, #fff3e2, transparent 60%);
+}
+
+/* Subtle grain to break the flat gradient. */
+.login-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.login-card {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  padding: 30px 28px 26px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

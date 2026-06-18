@@ -20,6 +20,31 @@ export const PRODUCT_TYPES = ["print", "sticker", "craft", "snail_mail"];
 export const MARKET_STATUSES = ["considering", "applied", "accepted", "rejected", "attended"];
 export const WEB_SEARCH_CADENCES = ["weekly", "monthly", "off"];
 
+// Human labels for the CRUD forms and the read rows — one source for both.
+export const TYPE_LABELS: Record<string, string> = {
+  print: "Print",
+  sticker: "Sticker",
+  craft: "Craft",
+  snail_mail: "Snail mail",
+};
+
+export const STATUS_LABELS: Record<string, string> = {
+  considering: "Considering",
+  applied: "Applied",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  attended: "Attended",
+};
+
+// Maps a market status to a chip variant class (defined in globals.css).
+export const STATUS_CHIP: Record<string, string> = {
+  considering: "chip-muted",
+  applied: "chip-accent",
+  accepted: "chip-ok",
+  rejected: "chip-danger",
+  attended: "chip-ok",
+};
+
 export function badge(map: Record<string, string>, key: string | null | undefined): string {
   return (key && map[key]) || key || "—";
 }
