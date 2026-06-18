@@ -22,6 +22,7 @@ import {
   followerSnapshots,
   instagramAccount,
   markets,
+  postIdeas,
   posts,
   products,
   settings,
@@ -33,6 +34,7 @@ import {
   type InstagramAccount,
   type Market,
   type Post,
+  type PostIdea,
   type Product,
   type Settings,
 } from "./schema";
@@ -45,6 +47,7 @@ export type {
   InstagramAccount,
   Market,
   Post,
+  PostIdea,
   Product,
   Settings,
 } from "./schema";
@@ -238,17 +241,20 @@ export type SlotInput = {
 };
 
 /**
- * Idempotent weekly write (Strategy Agent). Deletes this week's *unattached*
- * slots (post_id IS NULL) then inserts the fresh plan, so re-running never
- * duplicates a week and never discards a slot a draft is already attached to.
- * Returns the new row ids.
+ * Idempotent weekly write (Strategy Agent). Deletes this week's *unattached and
+ * un-pinned* slots (post_id IS NULL AND pinned = false) then inserts the fresh
+ * plan, so re-running never duplicates a week, never discards a slot a draft is
+ * attached to, and never discards a slot the user has manually arranged
+ * (pinned). Returns the new row ids.
  */
 export async function replaceWeekPlan(weekStart: string, slots: SlotInput[]): Promise<number[]> {
   const generatedAt = await nowIso();
   return db.transaction(async (tx) => {
     await tx
       .delete(calendar)
-      .where(and(eq(calendar.weekStart, weekStart), isNull(calendar.postId)));
+      .where(
+        and(eq(calendar.weekStart, weekStart), isNull(calendar.postId), eq(calendar.pinned, false)),
+      );
     const ids: number[] = [];
     for (const slot of slots) {
       const [row] = await tx
@@ -316,6 +322,49 @@ export async function updateCalendarSlot(
 
 export async function linkSlotToPost(slotId: number, postId: number): Promise<void> {
   await updateCalendarSlot(slotId, { postId });
+}
+
+/** Insert a single calendar slot (manual scheduling / default-layout seed). */
+export async function insertCalendarSlot(
+  fields: typeof calendar.$inferInsert,
+): Promise<number> {
+  const generatedAt = await nowIso();
+  const [row] = await db
+    .insert(calendar)
+    .values({ generatedAt, ...fields })
+    .returning({ id: calendar.id });
+  return row.id;
+}
+
+/** Remove a slot from the calendar (unschedule). The linked idea is untouched. */
+export async function deleteCalendarSlot(slotId: number): Promise<void> {
+  await db.delete(calendar).where(eq(calendar.id, slotId));
+}
+
+// --- post_ideas (the reusable idea library / "box") -------------------------
+
+/** Non-archived ideas, newest first — backs the calendar's idea tray. */
+export async function getIdeaLibrary(): Promise<PostIdea[]> {
+  return db
+    .select()
+    .from(postIdeas)
+    .where(eq(postIdeas.archived, false))
+    .orderBy(desc(postIdeas.id));
+}
+
+export async function getIdea(ideaId: number): Promise<PostIdea | null> {
+  const rows = await db.select().from(postIdeas).where(eq(postIdeas.id, ideaId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function insertIdea(fields: typeof postIdeas.$inferInsert): Promise<number> {
+  const [row] = await db.insert(postIdeas).values(fields).returning({ id: postIdeas.id });
+  return row.id;
+}
+
+/** Soft-delete: keep the row (calendar slots may still reference it) but hide it. */
+export async function archiveIdea(ideaId: number): Promise<void> {
+  await db.update(postIdeas).set({ archived: true }).where(eq(postIdeas.id, ideaId));
 }
 
 // --- products ---------------------------------------------------------------

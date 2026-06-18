@@ -154,11 +154,43 @@ export const calendar = pgTable(
     contentIdea: text("content_idea"),
     priority: integer("priority"),
     postId: bigint("post_id", { mode: "number" }).references(() => posts.id),
+
+    // --- Interactive calendar (drag-and-drop planner) -----------------------
+    // done: a lightweight planning check (not tied to IG-synced post data).
+    // pinned: set true on any manual edit (move / create / mark done) so a
+    //   Strategy Agent re-run preserves it — replaceWeekPlan only clears
+    //   un-pinned, un-attached slots. ideaId: the library idea this slot was
+    //   scheduled from (the idea itself stays in post_ideas).
+    done: boolean("done").notNull().default(false),
+    pinned: boolean("pinned").notNull().default(false),
+    ideaId: bigint("idea_id", { mode: "number" }).references(() => postIdeas.id),
   },
   (t) => [
     check("calendar_format_check", sql`${t.format} in ('static', 'carousel', 'reel', 'story')`),
     check("calendar_priority_check", sql`${t.priority} in (1, 2)`),
     index("idx_calendar_week").on(t.weekStart),
+  ],
+);
+
+// --- post_ideas: the reusable idea "box" the calendar drags from ------------
+// A backlog of post ideas that persists across weeks. Scheduling an idea
+// *copies* its fields into a calendar slot (calendar.ideaId links back), so the
+// idea stays available in the library. Created by the user or seeded by agents.
+export const postIdeas = pgTable(
+  "post_ideas",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    title: text("title").notNull(), // short label on the idea card
+    format: text("format"), // nullable; same vocabulary as posts/calendar
+    contentIdea: text("content_idea"),
+    source: text("source").notNull().default("user"), // 'agent' | 'user'
+    archived: boolean("archived").notNull().default(false),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [
+    check("post_ideas_format_check", sql`${t.format} in ('static', 'carousel', 'reel', 'story')`),
+    check("post_ideas_source_check", sql`${t.source} in ('agent', 'user')`),
+    index("idx_post_ideas_archived").on(t.archived),
   ],
 );
 
@@ -264,6 +296,7 @@ export type Settings = typeof settings.$inferSelect;
 export type BrandVoice = typeof brandVoice.$inferSelect;
 export type Post = typeof posts.$inferSelect;
 export type CalendarSlot = typeof calendar.$inferSelect;
+export type PostIdea = typeof postIdeas.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Market = typeof markets.$inferSelect;
 export type InstagramAccount = typeof instagramAccount.$inferSelect;

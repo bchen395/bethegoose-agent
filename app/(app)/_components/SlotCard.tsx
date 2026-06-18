@@ -1,9 +1,10 @@
 import { FORMAT_BADGE, badge } from "../_lib/format";
 
 /**
- * A read-only weekly-plan suggestion from the Strategy Agent: when to post, what
- * format, and the theme/idea. Posting, art, captions and CTAs are all handled by
- * hand off-app, so this card carries no actions.
+ * A weekly-plan slot: when to post, what format, and the theme/idea. On the
+ * interactive calendar it can be dragged, marked done, and unscheduled; those
+ * controls are layered on by DraggableSlot, so this stays a pure presentational
+ * card (the `done` flag only changes how it reads).
  */
 export type SlotCardData = {
   id: number;
@@ -13,11 +14,12 @@ export type SlotCardData = {
   theme: string | null;
   contentIdea: string | null;
   priority: number | null;
+  done?: boolean;
 };
 
 export default function SlotCard({ slot }: { slot: SlotCardData }) {
   return (
-    <div className="slot">
+    <div className={slot.done ? "slot slot-done" : "slot"}>
       <div className="slot-tags">
         {slot.format && (
           <span className={`chip chip-fmt-${slot.format}`}>{badge(FORMAT_BADGE, slot.format)}</span>
