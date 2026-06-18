@@ -2,23 +2,38 @@ import {
   INSIGHTS_WINDOW_DAYS,
   getEngagementByFormat,
   getEngagementByWeekday,
+  getFollowerTrend,
+  getInstagramAccount,
   getSubscriberTrend,
   getSubscribersByCtaType,
   getTopPosts,
 } from "@/lib/db";
-import { signedDisplayUrl } from "@/lib/storage";
 import ReuseHitsButton from "../_components/ReuseHitsButton";
 import { FORMAT_BADGE, badge } from "../_lib/format";
 
 const WINDOW = INSIGHTS_WINDOW_DAYS;
 
-async function artUrlFor(key: string | null): Promise<string | null> {
-  if (!key) return null;
-  try {
-    return await signedDisplayUrl(key);
-  } catch {
-    return null;
-  }
+/** Minimal inline sparkline (no client JS) for the follower trend. */
+function Sparkline({ points }: { points: number[] }) {
+  if (points.length < 2) return null;
+  const w = 220;
+  const h = 44;
+  const pad = 3;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const coords = points
+    .map((v, i) => {
+      const x = pad + (i / (points.length - 1)) * (w - 2 * pad);
+      const y = h - pad - ((v - min) / span) * (h - 2 * pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg width={w} height={h} style={{ display: "block", marginTop: 4 }} aria-hidden>
+      <polyline fill="none" stroke="#3f7d4f" strokeWidth={2} points={coords} />
+    </svg>
+  );
 }
 
 const CTA_LABEL: Record<string, string> = {
@@ -30,17 +45,15 @@ const CTA_LABEL: Record<string, string> = {
 };
 
 export default async function InsightsPage() {
-  const [byFormat, byWeekday, topRaw, byCta, trend] = await Promise.all([
+  const [byFormat, byWeekday, top, byCta, trend, followerTrend, instagram] = await Promise.all([
     getEngagementByFormat(WINDOW),
     getEngagementByWeekday(WINDOW),
     getTopPosts(WINDOW, 5),
     getSubscribersByCtaType(WINDOW),
     getSubscriberTrend(WINDOW),
+    getFollowerTrend(WINDOW),
+    getInstagramAccount(),
   ]);
-
-  const top = await Promise.all(
-    topRaw.map(async (p) => ({ post: p, artUrl: await artUrlFor(p.artFilename) })),
-  );
 
   const hasPosts = byFormat.length > 0 || top.length > 0;
 
@@ -55,8 +68,8 @@ export default async function InsightsPage() {
       {!hasPosts && (
         <div className="card">
           <p className="muted">
-            Nothing to rank yet. Post a few things and enter their numbers in the Engagement view —
-            the patterns show up here once there&apos;s data.
+            Nothing to rank yet. Once Instagram syncs a few posts and their numbers, the patterns
+            show up here.
           </p>
         </div>
       )}
@@ -120,8 +133,22 @@ export default async function InsightsPage() {
             ))}
           </div>
           <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-            Weekday of when posts went out, scored by saves + shares. No time-of-day ranking —
-            a sub-1K account has no reliable publish-time signal.
+            Real Instagram publish day, scored by saves + shares.
+          </p>
+        </section>
+      )}
+
+      {/* --- Follower growth (Item #1) ------------------------------------ */}
+      {followerTrend.length >= 2 && (
+        <section className="card">
+          <h2 style={{ marginTop: 0 }}>
+            Followers
+            {instagram?.followersCount != null ? ` · ${instagram.followersCount}` : ""}
+          </h2>
+          <Sparkline points={followerTrend.map((s) => s.followersCount)} />
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+            {followerTrend[0].followersCount} → {followerTrend[followerTrend.length - 1].followersCount}{" "}
+            over the last {WINDOW} days.
           </p>
         </section>
       )}
@@ -130,32 +157,33 @@ export default async function InsightsPage() {
       {top.length > 0 && (
         <section className="card">
           <h2 style={{ marginTop: 0 }}>Top posts</h2>
-          {top.map(({ post, artUrl }, i) => (
+          {top.map((post, i) => (
             <div
               key={post.id}
-              className="row"
-              style={{ alignItems: "flex-start", borderTop: i === 0 ? "none" : "1px solid var(--border)", paddingTop: 10, marginTop: 10 }}
+              style={{ borderTop: i === 0 ? "none" : "1px solid var(--border)", paddingTop: 10, marginTop: 10 }}
             >
-              {artUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={artUrl} alt="art" style={{ width: 72, borderRadius: 6 }} />
+              <div className="muted" style={{ fontSize: 13 }}>
+                {i === 0 ? "🥇 " : `#${i + 1} `}
+                {badge(FORMAT_BADGE, post.format)} · score <strong>{post.score}</strong> · posted #
+                {post.id}
+              </div>
+              {post.caption && (
+                <div style={{ fontSize: 14 }}>
+                  {post.caption.slice(0, 140)}
+                  {post.caption.length > 140 ? "…" : ""}
+                </div>
               )}
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <div className="muted" style={{ fontSize: 13 }}>
-                  {i === 0 ? "🥇 " : `#${i + 1} `}
-                  {badge(FORMAT_BADGE, post.format)} · score <strong>{post.score}</strong> · posted #
-                  {post.id}
-                </div>
-                {post.caption && (
-                  <div style={{ fontSize: 14 }}>
-                    {post.caption.slice(0, 140)}
-                    {post.caption.length > 140 ? "…" : ""}
-                  </div>
+              <div className="muted" style={{ fontSize: 12 }}>
+                {post.saves ?? 0} saves · {post.shares ?? 0} shares · {post.reach ?? 0} reach ·{" "}
+                {post.likes ?? 0} likes
+                {post.permalink && (
+                  <>
+                    {" · "}
+                    <a href={post.permalink} target="_blank" rel="noreferrer">
+                      View on Instagram ↗
+                    </a>
+                  </>
                 )}
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {post.saves ?? 0} saves · {post.shares ?? 0} shares · {post.reach ?? 0} reach ·{" "}
-                  {post.likes ?? 0} likes
-                </div>
               </div>
             </div>
           ))}

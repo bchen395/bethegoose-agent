@@ -1,8 +1,7 @@
 import { DateTime } from "luxon";
 import Link from "next/link";
 
-import { getCalendarWeek, getPost, todayIso } from "@/lib/db";
-import { signedDisplayUrl } from "@/lib/storage";
+import { getCalendarWeek, todayIso } from "@/lib/db";
 import RunPlanButton from "../_components/RunPlanButton";
 import SlotCard, { type SlotCardData } from "../_components/SlotCard";
 
@@ -24,32 +23,15 @@ export default async function CalendarPage({
 
   const slots = await getCalendarWeek(weekStartIso);
 
-  // Resolve each slot's linked post + a signed art URL (bucket is private).
-  const cards: SlotCardData[] = await Promise.all(
-    slots.map(async (slot): Promise<SlotCardData> => {
-      const post = slot.postId ? await getPost(slot.postId) : null;
-      let artUrl: string | null = null;
-      if (post?.artFilename) {
-        try {
-          artUrl = await signedDisplayUrl(post.artFilename);
-        } catch {
-          artUrl = null;
-        }
-      }
-      return {
-        id: slot.id,
-        slotDate: slot.slotDate,
-        slotTime: slot.slotTime,
-        format: slot.format,
-        theme: slot.theme,
-        contentIdea: slot.contentIdea,
-        priority: slot.priority,
-        status: post?.status ?? null,
-        artUrl,
-        hasArt: !!post?.artFilename,
-      };
-    }),
-  );
+  const cards: SlotCardData[] = slots.map((slot) => ({
+    id: slot.id,
+    slotDate: slot.slotDate,
+    slotTime: slot.slotTime,
+    format: slot.format,
+    theme: slot.theme,
+    contentIdea: slot.contentIdea,
+    priority: slot.priority,
+  }));
 
   const prev = monday.minus({ days: 7 }).toISODate();
   const next = monday.plus({ days: 7 }).toISODate();

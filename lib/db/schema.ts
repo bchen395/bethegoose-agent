@@ -115,6 +115,15 @@ export const posts = pgTable(
 
     // --- FEATURES.md §1 delta (metrics live here) ---------------------------
     shares: integer("shares"),
+
+    // --- Item #1 (Instagram sync): IG is the source of posted rows. The daily
+    // sync ingests media directly (there's no in-app draft to match against),
+    // so these mirror the real post on Instagram. ig_media_id is the idempotent
+    // upsert key; published_at is the real media timestamp (not a click). ------
+    igMediaId: text("ig_media_id"),
+    publishedAt: text("published_at"),
+    statsSyncedAt: text("stats_synced_at"), // ISO; null until insights pulled
+    permalink: text("permalink"), // link to the post on Instagram
   },
   (t) => [
     check(
@@ -125,6 +134,9 @@ export const posts = pgTable(
     check("posts_cta_type_check", sql`${t.ctaType} in ('shop', 'snail_mail', 'market', 'none')`),
     index("idx_posts_status").on(t.status),
     index("idx_posts_posted_at").on(t.postedAt),
+    // Postgres allows multiple NULLs in a unique index, so legacy non-IG rows
+    // are fine; the sync uses this to upsert-by-media without duplicating.
+    uniqueIndex("idx_posts_ig_media_id").on(t.igMediaId),
   ],
 );
 
@@ -218,6 +230,35 @@ export const usageLog = pgTable(
   (t) => [check("usage_log_agent_check", sql`${t.agent} in ('strategy', 'content', 'distribution')`)],
 );
 
+// --- Item #1 (Instagram sync): connection + follower history -----------------
+
+// Single-row Instagram connection (id = 1), mirrors settings/brand_voice. Holds
+// the long-lived OAuth token (refreshed by the weekly cron) and last-sync stamp.
+export const instagramAccount = pgTable(
+  "instagram_account",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey(),
+    igUserId: text("ig_user_id").notNull(),
+    username: text("username"),
+    accessToken: text("access_token").notNull(),
+    tokenExpiresAt: text("token_expires_at"), // ISO; refresh before this
+    followersCount: integer("followers_count"),
+    syncedAt: text("synced_at"), // ISO of last successful sync
+  },
+  (t) => [check("instagram_account_id_check", sql`${t.id} = 1`)],
+);
+
+// Follower count over time — charted as a sparkline on /insights.
+export const followerSnapshots = pgTable(
+  "follower_snapshots",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    capturedAt: text("captured_at").notNull(), // ISO
+    followersCount: integer("followers_count").notNull(),
+  },
+  (t) => [index("idx_follower_snapshots_captured").on(t.capturedAt)],
+);
+
 // Convenient row types for callers (camelCase, jsonb arrays native).
 export type Settings = typeof settings.$inferSelect;
 export type BrandVoice = typeof brandVoice.$inferSelect;
@@ -225,3 +266,5 @@ export type Post = typeof posts.$inferSelect;
 export type CalendarSlot = typeof calendar.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Market = typeof markets.$inferSelect;
+export type InstagramAccount = typeof instagramAccount.$inferSelect;
+export type FollowerSnapshot = typeof followerSnapshots.$inferSelect;

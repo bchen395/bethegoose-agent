@@ -19,6 +19,8 @@ import * as schema from "./schema";
 import {
   brandVoice,
   calendar,
+  followerSnapshots,
+  instagramAccount,
   markets,
   posts,
   products,
@@ -27,6 +29,8 @@ import {
   usageLog,
   type BrandVoice,
   type CalendarSlot,
+  type FollowerSnapshot,
+  type InstagramAccount,
   type Market,
   type Post,
   type Product,
@@ -34,7 +38,16 @@ import {
 } from "./schema";
 
 // Re-export the row types so callers can `import { type Post } from "@/lib/db"`.
-export type { BrandVoice, CalendarSlot, Market, Post, Product, Settings } from "./schema";
+export type {
+  BrandVoice,
+  CalendarSlot,
+  FollowerSnapshot,
+  InstagramAccount,
+  Market,
+  Post,
+  Product,
+  Settings,
+} from "./schema";
 
 // --- Connection (cached across dev hot-reloads to avoid exhausting the pool) -
 
@@ -540,8 +553,8 @@ const WEEKDAY_LABELS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /**
  * Per-weekday averages over posted rows, weekday derived in settings.timezone.
- * (No time-of-day signal: posted_at is the "mark posted" click, not the IG
- * publish time, so we rank weekday only — not an invented "best hour".)
+ * Prefers the real IG publish time (published_at) and falls back to posted_at for
+ * legacy rows — the Instagram sync (Item #1) makes published_at the true time.
  */
 export async function getEngagementByWeekday(
   windowDays = INSIGHTS_WINDOW_DAYS,
@@ -549,11 +562,18 @@ export async function getEngagementByWeekday(
   const tz = (await getSettings())?.timezone ?? "UTC";
   const cutoff = await windowStart(windowDays);
   const score = scoreExpr();
-  const dow = sql<number>`extract(isodow from (${posts.postedAt})::timestamptz at time zone ${tz})`;
+  const publishTs = sql`coalesce(${posts.publishedAt}, ${posts.postedAt})`;
+  const dow = sql<number>`extract(isodow from (${publishTs})::timestamptz at time zone ${tz})`;
   const rows = await db
     .select({ weekday: dow, n: sql<number>`count(*)`, avgScore: sql<number>`avg(${score})` })
     .from(posts)
-    .where(and(eq(posts.status, "posted"), gte(posts.postedAt, cutoff), isNotNull(posts.postedAt)))
+    .where(
+      and(
+        eq(posts.status, "posted"),
+        sql`${publishTs} >= ${cutoff}`,
+        sql`${publishTs} is not null`,
+      ),
+    )
     .groupBy(dow)
     .orderBy(desc(sql`avg(${score})`));
   return rows.map((r) => {
@@ -701,4 +721,82 @@ export async function getMonthlySpend(): Promise<number> {
     .from(usageLog)
     .where(gte(usageLog.occurredAt, monthStart));
   return Number(rows[0]?.total ?? 0);
+}
+
+// --- Instagram sync (Item #1): connection, ingest, follower history ---------
+
+/** Read the single Instagram connection row (id = 1), or null if not connected. */
+export async function getInstagramAccount(): Promise<InstagramAccount | null> {
+  const rows = await db
+    .select()
+    .from(instagramAccount)
+    .where(eq(instagramAccount.id, 1))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Create or replace the connection (id = 1) — called by the OAuth callback. */
+export async function upsertInstagramAccount(
+  fields: Omit<typeof instagramAccount.$inferInsert, "id">,
+): Promise<void> {
+  await db
+    .insert(instagramAccount)
+    .values({ id: 1, ...fields })
+    .onConflictDoUpdate({ target: instagramAccount.id, set: fields });
+}
+
+/** Patch the connection row (id = 1) — token refresh, synced_at, followers. */
+export async function updateInstagramAccount(
+  fields: Partial<typeof instagramAccount.$inferInsert>,
+): Promise<void> {
+  if (Object.keys(fields).length === 0) return;
+  await db.update(instagramAccount).set(fields).where(eq(instagramAccount.id, 1));
+}
+
+/** Look up a post by its IG media id — the idempotent ingest upsert key. */
+export async function getPostByIgMediaId(igMediaId: string): Promise<Post | null> {
+  const rows = await db.select().from(posts).where(eq(posts.igMediaId, igMediaId)).limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Posted IG-sourced rows whose metrics should be (re)pulled: never synced yet,
+ * or published within the last ~7 days (IG metrics keep maturing for a while).
+ * Compares the full ISO published_at against a date prefix lexicographically,
+ * same approach as getMonthlySpend.
+ */
+export async function getPostsForStatsSync(): Promise<Post[]> {
+  const cutoff = await windowStart(7);
+  return db
+    .select()
+    .from(posts)
+    .where(
+      and(
+        isNotNull(posts.igMediaId),
+        eq(posts.status, "posted"),
+        or(isNull(posts.statsSyncedAt), gte(posts.publishedAt, cutoff)),
+      ),
+    )
+    .orderBy(desc(posts.publishedAt), desc(posts.id));
+}
+
+/** Append a follower-count snapshot (captured now, settings.timezone). */
+export async function insertFollowerSnapshot(followersCount: number): Promise<void> {
+  await db.insert(followerSnapshots).values({ capturedAt: await nowIso(), followersCount });
+}
+
+/** Follower snapshots in the rolling window, oldest first — the §insights sparkline. */
+export async function getFollowerTrend(
+  windowDays = INSIGHTS_WINDOW_DAYS,
+): Promise<Array<{ capturedAt: string; followersCount: number }>> {
+  const cutoff = await windowStart(windowDays);
+  const rows = await db
+    .select({
+      capturedAt: followerSnapshots.capturedAt,
+      followersCount: followerSnapshots.followersCount,
+    })
+    .from(followerSnapshots)
+    .where(gte(followerSnapshots.capturedAt, cutoff))
+    .orderBy(asc(followerSnapshots.capturedAt));
+  return rows.map((r) => ({ capturedAt: String(r.capturedAt), followersCount: Number(r.followersCount) }));
 }

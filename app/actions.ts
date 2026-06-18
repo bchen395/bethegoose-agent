@@ -1,10 +1,10 @@
 "use server";
 
 /**
- * app/actions.ts — server actions for UI mutations (attach art, save draft,
- * discard, mark posted, save numbers, sign out). Reads go through RSC; these are
- * the writes. Long agent triggers (Strategy/Content/Distribution) are route
- * handlers instead, so they can set maxDuration.
+ * app/actions.ts — server actions for UI mutations (save numbers override, log
+ * subscribers, CRUD for products/markets/settings/brand voice, sign out). Reads
+ * go through RSC; these are the writes. The long agent trigger (Strategy) is a
+ * route handler instead, so it can set maxDuration.
  *
  * All actions run behind the auth middleware (it matches server-action POSTs).
  */
@@ -14,115 +14,21 @@ import { redirect } from "next/navigation";
 
 import {
   deleteMarket,
-  getCalendarSlot,
   insertMarket,
-  insertPost,
   insertProduct,
   insertSubscriberEvent,
-  linkSlotToPost,
-  markPosted as dbMarkPosted,
-  setPostStatus,
   updateBrandVoice,
   updateEngagement,
   updateMarket,
-  updatePost,
   updateProduct,
   updateSettings,
 } from "@/lib/db";
-import { buildArtKey, createSignedUploadUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import {
   MARKET_STATUSES,
   PRODUCT_TYPES,
   WEB_SEARCH_CADENCES,
 } from "@/app/(app)/_lib/format";
-
-const CTA_OPTIONS = ["none", "shop", "snail_mail", "market"];
-
-/** Parse an edited hashtag box (comma/space/newline separated) into a clean,
- *  de-duped list. Mirrors the Content Agent's normalization. */
-function parseHashtags(text: string): string[] {
-  const tags: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of text.replace(/,/g, " ").split(/\s+/)) {
-    const body = raw.replace(/^#+/, "").trim();
-    if (!body) continue;
-    const tag = "#" + body;
-    const key = tag.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      tags.push(tag);
-    }
-  }
-  return tags;
-}
-
-/** Return the slot's linked draft post id, creating + linking one if needed
- *  (the row the Content Agent later fills in — attach-art owns its creation). */
-async function ensureDraft(slotId: number): Promise<number> {
-  const slot = await getCalendarSlot(slotId);
-  if (!slot) throw new Error(`Calendar slot ${slotId} not found.`);
-  if (slot.postId) return slot.postId;
-  const postId = await insertPost({ status: "draft", format: slot.format });
-  await linkSlotToPost(slotId, postId);
-  return postId;
-}
-
-/**
- * Step 1 of attach-art: ensure a draft exists, mint a signed upload URL the
- * browser uploads to directly (no Vercel function in the upload path).
- */
-export async function prepareArtUpload(
-  slotId: number,
-  filename: string,
-): Promise<{ postId: number; key: string; token: string }> {
-  const postId = await ensureDraft(slotId);
-  const key = buildArtKey(slotId, filename);
-  const { token } = await createSignedUploadUrl(key);
-  return { postId, key, token };
-}
-
-/** Step 2 of attach-art: record the uploaded object key on the draft post. */
-export async function finalizeArtUpload(postId: number, key: string): Promise<void> {
-  await updatePost(postId, { artFilename: key });
-  revalidatePath("/calendar");
-}
-
-/** Save edits to a draft (caption/hashtags/CTA). */
-export async function saveDraft(
-  postId: number,
-  data: {
-    caption: string;
-    hashtagsText: string;
-    ctaType: string;
-    ctaUrl: string;
-    ctaSuggestion: string;
-  },
-): Promise<void> {
-  const ctaType = CTA_OPTIONS.includes(data.ctaType) ? data.ctaType : "none";
-  const fields: Record<string, unknown> = {
-    caption: data.caption.trim() || null,
-    hashtags: parseHashtags(data.hashtagsText),
-    ctaType,
-    ctaSuggestion: data.ctaSuggestion.trim() || null,
-    ctaUrl: data.ctaUrl.trim() || null,
-  };
-  // CTA no longer points at a product -> clear the rotation target so the
-  // Distribution Agent doesn't stamp last_promoted_at wrongly.
-  if (ctaType !== "shop" && ctaType !== "snail_mail") fields.productId = null;
-  await updatePost(postId, fields);
-  revalidatePath("/review");
-}
-
-export async function discardDraft(postId: number): Promise<void> {
-  await setPostStatus(postId, "discarded");
-  revalidatePath("/review");
-}
-
-export async function markPosted(postId: number): Promise<void> {
-  await dbMarkPosted(postId);
-  revalidatePath("/engagement");
-}
 
 /** Coerce to a non-negative integer, or null if blank/invalid. */
 function cleanCount(v: number | null | undefined): number | null {
