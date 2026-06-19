@@ -264,14 +264,30 @@ The Instagram and Stripe syncs are free. The §7 cost meter logs every model cal
 
 ## Migration & history
 
-- **`FEATURES.md` / `FEATURES_PLAN.md`** — the post-migration feature work (what/why) and
-  its build status.
-- **`MIGRATION.md`** — the plan that moved this from local Python/Streamlit/SQLite to the
-  hosted Next.js + Supabase stack.
-- **`SPEC.md`** — the original build spec for the Python prototype.
-- **`PROGRESS.md`** — the per-step build log for that original prototype.
+The active feature docs live at the repo root: **`FEATURES.md`** (what/why) and
+**`FEATURES_PLAN.md`** (how/status). Older planning docs have been archived under
+**`docs/archive/`** now that their work is complete:
+
+- **`docs/archive/SPEC.md`** — the original build spec for the Python/Streamlit prototype.
+- **`docs/archive/MIGRATION.md`** — the (completed) plan that moved this from local
+  Python/Streamlit/SQLite to the hosted Next.js + Supabase stack.
+- **`docs/archive/PROGRESS.md`** — the per-step build log for the migration **and** the
+  first post-migration features (CRUD screens, Stripe + Instagram sync).
+- **`docs/archive/AUTOMATION_PLAN.md`** — the data-entry-reduction plan; Items #1–#3 built,
+  #4 still open (below).
+- **`docs/archive/REDESIGN_SPEC.md`** — the UI redesign plan; steps 1–6 + the `fontSize`
+  cleanup shipped, one Step-7 item still open (below).
 
 The original Python prototype (`agents/*.py`, `utils/`, `ui/app.py`,
 `cron/weekly_strategy.sh`, `scripts/seed_*.py`, `requirements.txt`, `db/init.sql`) has been
 **removed** now that the hosted app is trusted — see git history (and the docs above) if you
 need to refer back to it.
+
+### Still open (deferred)
+
+- **Email-subscriber sync** — `docs/archive/AUTOMATION_PLAN.md` Item #4: auto-ingest new
+  email subscribers via an ESP webhook into `subscriber_events`. **Blocked on choosing an
+  ESP** (Buttondown / Kit / Mailchimp / MailerLite / none); today subscribers are hand-entered
+  on `/engagement`.
+- **Login brand treatment** — `docs/archive/REDESIGN_SPEC.md` Step 7: the login page is on
+  the design system but still lacks the goose motif / warm textured backdrop. Cosmetic polish.

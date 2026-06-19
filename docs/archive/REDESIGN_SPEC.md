@@ -3,6 +3,10 @@
 Handoff doc for a fresh session. The design-system layer (steps 1–3) is **done and shipped**;
 this spec covers the per-screen redesign work that builds on it.
 
+> **Status (archived 2026-06-19):** Steps 4–6 and the `fontSize` cleanup are **shipped**.
+> The only remaining item is **Step 7's login brand treatment** (goose motif / textured
+> backdrop) — the login page is otherwise on the design system. Kept for reference.
+
 ## Context
 
 **App:** "Be The Goose" — a single-artist business agent (weekly post plan, engagement

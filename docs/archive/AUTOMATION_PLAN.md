@@ -4,7 +4,9 @@
 > chores in the Be The Goose agent (Instagram stats, products, markets, subscribers).
 > Written so it can be executed in a **fresh Claude Code session** with no prior context.
 >
-> **Status:** none of this is built yet. This is the design + step-by-step build guide.
+> **Status (archived 2026-06-19):** Items #1 (Instagram stats), #2 (CRUD screens), and #3
+> (Stripe shop sync) are **built** — see the ✅ markers below. Only **Item #4
+> (email-subscriber sync)** remains, blocked on an ESP choice. Kept for reference.
 
 ## How to use this doc in a new session
 
