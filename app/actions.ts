@@ -9,6 +9,7 @@
  * All actions run behind the auth middleware (it matches server-action POSTs).
  */
 
+import { DateTime } from "luxon";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -16,8 +17,8 @@ import {
   archiveIdea,
   deleteCalendarSlot,
   deleteMarket,
+  getCalendarSlot,
   getCalendarWeek,
-  getIdea,
   getSettings,
   insertCalendarSlot,
   insertIdea,
@@ -27,6 +28,7 @@ import {
   updateBrandVoice,
   updateCalendarSlot,
   updateEngagement,
+  updateIdea,
   updateMarket,
   updatePost,
   updateProduct,
@@ -261,10 +263,48 @@ export async function saveBrandVoice(data: {
   revalidatePath("/settings");
 }
 
-// --- Interactive calendar: drag-drop, the idea library, and "done" ----------
+// --- Interactive calendar: tap-to-add / tap-to-edit -------------------------
 //
-// These back the interactive /calendar board. Any manual change pins the slot
-// (pinned = true) so a Strategy Agent re-run preserves it (see replaceWeekPlan).
+// These back the simplified /calendar. The page shows ONE unified card type:
+// scheduled posts live in `calendar` (under a day), unscheduled ideas live in
+// `post_ideas`. The editor edits either in place, and moving a card between the
+// two (give a day / send back to unscheduled) hops it across tables. Any manual
+// change pins the slot (pinned = true) so a Strategy Agent re-run preserves it
+// (see replaceWeekPlan). Agent suggestions are just un-pinned `calendar` rows,
+// so editing one is a plain update — no separate "accept" step.
+
+const HHMM = /^\d{2}:\d{2}$/;
+
+/** Monday (ISO) of the week a given day falls in — keeps weekStart in sync on moves. */
+function mondayOfIso(slotDate: string): string {
+  const d = DateTime.fromISO(slotDate);
+  return d.minus({ days: d.weekday - 1 }).toISODate()!;
+}
+
+/** The shared editor payload for a card (a slot or an idea). */
+type SlotFields = {
+  slotDate: string | null; // null = unscheduled
+  slotTime?: string | null;
+  format?: string | null;
+  theme?: string | null;
+  contentIdea?: string | null;
+  priority?: number | null;
+};
+
+/** Validate + normalize the editor fields once for every write path below. */
+function cleanSlotFields(f: SlotFields) {
+  const format = (f.format ?? "").trim();
+  if (format && !FORMATS.includes(format)) throw new Error("Pick a valid format.");
+  const slotTime = (f.slotTime ?? "").trim();
+  if (slotTime && !HHMM.test(slotTime)) throw new Error("Time must be HH:MM (e.g. 18:30).");
+  return {
+    format: format || null,
+    slotTime: slotTime || null,
+    theme: (f.theme ?? "").trim() || null,
+    contentIdea: (f.contentIdea ?? "").trim() || null,
+    priority: f.priority === 1 ? 1 : 2,
+  };
+}
 
 /** Seed an empty week from the deterministic default layout (un-pinned). */
 export async function seedDefaultWeek(weekStart: string): Promise<void> {
@@ -279,65 +319,103 @@ export async function seedDefaultWeek(weekStart: string): Promise<void> {
   revalidatePath("/calendar");
 }
 
-/** Create a custom post idea in the reusable library (the "box"). */
-export async function createIdea(data: {
-  title: string;
-  format: string;
-  contentIdea: string;
-}): Promise<void> {
-  const title = data.title.trim();
-  if (!title) throw new Error("Give your idea a short title.");
-  const format = data.format.trim();
-  if (format && !FORMATS.includes(format)) throw new Error("Pick a valid format.");
-  await insertIdea({
-    title,
-    format: format || null,
-    contentIdea: data.contentIdea.trim() || null,
-    source: "user",
+/** Add a brand-new card: onto a day (a calendar slot) or to the unscheduled box (an idea). */
+export async function addPost(fields: SlotFields): Promise<void> {
+  const c = cleanSlotFields(fields);
+  if (fields.slotDate == null) {
+    if (!c.theme) throw new Error("Give your idea a short title.");
+    await insertIdea({ title: c.theme, format: c.format, contentIdea: c.contentIdea, source: "user" });
+  } else {
+    if (!ISO_DATE.test(fields.slotDate)) throw new Error("Invalid day.");
+    const settings = await getSettings();
+    await insertCalendarSlot({
+      weekStart: mondayOfIso(fields.slotDate),
+      slotDate: fields.slotDate,
+      slotTime: c.slotTime ?? settings?.defaultPostTime ?? "12:00",
+      format: c.format,
+      theme: c.theme,
+      contentIdea: c.contentIdea,
+      priority: c.priority,
+      pinned: true,
+    });
+  }
+  revalidatePath("/calendar");
+}
+
+/** Edit a scheduled slot in place — text/format/time/priority and/or move to another day. */
+export async function saveSlot(slotId: number, fields: SlotFields): Promise<void> {
+  if (fields.slotDate == null || !ISO_DATE.test(fields.slotDate)) throw new Error("Invalid day.");
+  const c = cleanSlotFields(fields);
+  await updateCalendarSlot(slotId, {
+    slotDate: fields.slotDate,
+    weekStart: mondayOfIso(fields.slotDate),
+    slotTime: c.slotTime,
+    format: c.format,
+    theme: c.theme,
+    contentIdea: c.contentIdea,
+    priority: c.priority,
+    pinned: true,
   });
   revalidatePath("/calendar");
 }
 
-/** Hide an idea from the library (calendar slots that used it are untouched). */
-export async function archiveIdeaAction(ideaId: number): Promise<void> {
+/** Edit an unscheduled idea in place (stays in the box). */
+export async function saveIdea(ideaId: number, fields: SlotFields): Promise<void> {
+  const c = cleanSlotFields(fields);
+  if (!c.theme) throw new Error("Give your idea a short title.");
+  await updateIdea(ideaId, { title: c.theme, format: c.format, contentIdea: c.contentIdea });
+  revalidatePath("/calendar");
+}
+
+/** Move an unscheduled idea onto a day. The idea leaves the box (archived). */
+export async function scheduleSlot(ideaId: number, fields: SlotFields): Promise<void> {
+  if (fields.slotDate == null || !ISO_DATE.test(fields.slotDate)) throw new Error("Invalid day.");
+  const c = cleanSlotFields(fields);
+  const settings = await getSettings();
+  await insertCalendarSlot({
+    weekStart: mondayOfIso(fields.slotDate),
+    slotDate: fields.slotDate,
+    slotTime: c.slotTime ?? settings?.defaultPostTime ?? "12:00",
+    format: c.format,
+    theme: c.theme,
+    contentIdea: c.contentIdea,
+    priority: c.priority,
+    pinned: true,
+    ideaId, // provenance: lets unscheduleSlot restore this same idea
+  });
   await archiveIdea(ideaId);
   revalidatePath("/calendar");
 }
 
-/** Schedule a library idea onto a day — copies its fields; the idea stays. */
-export async function scheduleIdea(
-  ideaId: number,
-  slotDate: string,
-  weekStart: string,
-): Promise<void> {
-  if (!ISO_DATE.test(slotDate) || !ISO_DATE.test(weekStart)) throw new Error("Invalid day.");
-  const idea = await getIdea(ideaId);
-  if (!idea) throw new Error("That idea no longer exists.");
-  const settings = await getSettings();
-  await insertCalendarSlot({
-    weekStart,
-    slotDate,
-    slotTime: settings?.defaultPostTime ?? "12:00",
-    format: idea.format,
-    theme: idea.title,
-    contentIdea: idea.contentIdea,
-    priority: 2,
-    pinned: true,
-    ideaId: idea.id,
-  });
-  revalidatePath("/calendar");
-}
-
-/** Move a scheduled slot to another day (drag between day columns). */
-export async function moveSlot(slotId: number, newSlotDate: string): Promise<void> {
-  if (!ISO_DATE.test(newSlotDate)) throw new Error("Invalid day.");
-  await updateCalendarSlot(slotId, { slotDate: newSlotDate, pinned: true });
-  revalidatePath("/calendar");
-}
-
-/** Remove a slot from the calendar (drag back to the tray / unschedule). */
-export async function unscheduleSlot(slotId: number): Promise<void> {
+/** Move a scheduled slot back to the unscheduled box. The slot leaves the calendar. */
+export async function unscheduleSlot(slotId: number, fields: SlotFields): Promise<void> {
+  const c = cleanSlotFields(fields);
+  const title = c.theme ?? "Untitled idea";
+  const slot = await getCalendarSlot(slotId);
+  if (slot?.ideaId != null) {
+    // Restore the original library idea this slot came from, with any edits.
+    await updateIdea(slot.ideaId, {
+      title,
+      format: c.format,
+      contentIdea: c.contentIdea,
+      archived: false,
+    });
+  } else {
+    await insertIdea({ title, format: c.format, contentIdea: c.contentIdea, source: "user" });
+  }
   await deleteCalendarSlot(slotId);
+  revalidatePath("/calendar");
+}
+
+/** Permanently remove a scheduled slot (the editor's Delete). */
+export async function deleteSlot(slotId: number): Promise<void> {
+  await deleteCalendarSlot(slotId);
+  revalidatePath("/calendar");
+}
+
+/** Remove an unscheduled idea (soft-delete; some slots may still reference it). */
+export async function deleteIdea(ideaId: number): Promise<void> {
+  await archiveIdea(ideaId);
   revalidatePath("/calendar");
 }
 

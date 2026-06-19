@@ -411,6 +411,15 @@ export async function archiveIdea(ideaId: number): Promise<void> {
   await db.update(postIdeas).set({ archived: true }).where(eq(postIdeas.id, ideaId));
 }
 
+/** Patch an idea's editable fields (title / format / contentIdea / archived). */
+export async function updateIdea(
+  ideaId: number,
+  fields: Partial<typeof postIdeas.$inferInsert>,
+): Promise<void> {
+  if (Object.keys(fields).length === 0) return;
+  await db.update(postIdeas).set(fields).where(eq(postIdeas.id, ideaId));
+}
+
 // --- products ---------------------------------------------------------------
 
 export async function insertProduct(fields: typeof products.$inferInsert): Promise<number> {
