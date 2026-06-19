@@ -3,18 +3,18 @@
 > **⚠ Superseded in places (2026-06-17).** A later simplification removed the Review
 > section, photo upload, and the **Content** and **Distribution** agents; posting and CTAs
 > are now manual, and **Instagram is the source of posted rows** (the daily sync ingests
-> media + metrics — see `AUTOMATION_PLAN.md` Item #1 and the 2026-06-17 entry in
-> `PROGRESS.md`). Where this file describes the attach-art → generate-draft → review →
+> media + metrics — see `docs/archive/AUTOMATION_PLAN.md` Item #1 and the 2026-06-17 entry in
+> `docs/archive/PROGRESS.md`). Where this file describes the attach-art → generate-draft → review →
 > approve → mark-posted → type-the-numbers loop (esp. §3), that flow no longer exists —
 > metrics auto-sync, with the manual form only as a fallback. The §1 schema, §2 insights,
 > §4 subscribers, §5–§7 tunables, and §8 reuse still hold. §9 caption-starters was removed.
 
-Feature changes layered on top of the hosted TypeScript stack from `MIGRATION.md`.
+Feature changes layered on top of the hosted TypeScript stack from `docs/archive/MIGRATION.md`.
 These are **behavior changes**, not a port. They ship **after** the migration cutover
-(MIGRATION.md §12, Step 9) so they're built once, on the new stack, against real
+(docs/archive/MIGRATION.md §12, Step 9) so they're built once, on the new stack, against real
 first-party data.
 
-> **Why this is a separate file from `MIGRATION.md`.** The migration's whole safety
+> **Why this is a separate file from `docs/archive/MIGRATION.md`.** The migration's whole safety
 > property is "the new code reproduces the Python behavior" — every step verifiable by
 > comparison. Mixing new behavior into it destroys that check (a discrepancy becomes
 > ambiguous: port bug or intended change?). So features live here and run later. The
@@ -289,7 +289,7 @@ it on, a click yields ≤3 short starters and the caption field remains empty + 
 
 ## Build sequence (each step independently verifiable)
 
-Runs after MIGRATION.md Step 9 (cutover). Schema (§1) excepted — that's folded into the
+Runs after docs/archive/MIGRATION.md Step 9 (cutover). Schema (§1) excepted — that's folded into the
 migration's Step 1.
 
 1. **Insights core (§2)** — the SQL helpers + `/insights` page. Highest value, unblocks
@@ -309,7 +309,7 @@ migration's Step 1.
 8. **Caption starters (§9)** — last, behind the flag, after talking to her. _Verify:_
    off = invisible; on = ≤3 starters, caption still required.
 
-Update `PROGRESS.md` per step, same as the migration.
+Update `docs/archive/PROGRESS.md` per step, same as the migration.
 
 ---
 

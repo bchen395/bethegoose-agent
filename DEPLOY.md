@@ -1,4 +1,4 @@
-# DEPLOY.md — Vercel production deploy (MIGRATION.md Step 8)
+# DEPLOY.md — Vercel production deploy (docs/archive/MIGRATION.md Step 8)
 
 The port (steps 0–7) is code-complete and `next build` is clean. This runbook covers
 going live on Vercel. Steps marked **(you)** are interactive (login / payment / dashboard)
@@ -132,7 +132,7 @@ vercel --prod          # CLI path
 
 ---
 
-## Gotchas (recap from MIGRATION.md §13)
+## Gotchas (recap from docs/archive/MIGRATION.md §13)
 
 - **Region:** Vercel default `iad1` ≈ Supabase `aws-1-us-east-1` — already aligned; keep it.
 - **Cron is UTC:** `0 12 * * 1` ≈ Mon 08:00 America/New_York (EDT); drifts ±1h at DST. Fine

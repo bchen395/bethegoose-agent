@@ -4,7 +4,7 @@ Implementation plan for the post-migration feature work in `FEATURES.md`, plus a
 live status tracker. `FEATURES.md` is the source of truth for *what* and *why*;
 this file records *how it's being built* and *what's done*.
 
-> **Why a separate file from `PROGRESS.md`.** `PROGRESS.md` tracks the original
+> **Why a separate file from `docs/archive/PROGRESS.md`.** `docs/archive/PROGRESS.md` tracks the original
 > SPEC build / migration on the old terms. The features here layer on the hosted
 > TypeScript stack, so they get their own tracker to avoid muddying that history.
 
