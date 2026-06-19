@@ -568,6 +568,19 @@ async function windowStart(days: number): Promise<string> {
 }
 
 /**
+ * An IANA timezone as an inlined SQL string literal, NOT a bound param. Required
+ * for `at time zone` expressions that are repeated across SELECT/GROUP BY/ORDER BY:
+ * a bound `${tz}` gets a *distinct* positional placeholder ($1, $3, $4, …) at each
+ * render, so Postgres treats the GROUP BY expression as structurally different from
+ * the SELECT one and rejects the query (42803, "must appear in the GROUP BY clause").
+ * Inlining makes every occurrence byte-identical so the expressions unify. Single
+ * quotes are doubled so it's injection-safe even though tz comes from settings.
+ */
+function tzLiteral(tz: string) {
+  return sql.raw(`'${tz.replace(/'/g, "''")}'`);
+}
+
+/**
  * SQL fragment for a posts row's performance score. Nullable metrics coalesce to
  * 0; when reach > 0 the weighted sum is divided by reach (a saves/shares *rate*),
  * so an efficient small post can outrank a lucky high-reach one. Built from
@@ -643,7 +656,7 @@ export async function getEngagementByWeekday(
   const cutoff = await windowStart(windowDays);
   const score = scoreExpr();
   const publishTs = sql`coalesce(${posts.publishedAt}, ${posts.postedAt})`;
-  const dow = sql<number>`extract(isodow from (${publishTs})::timestamptz at time zone ${tz})`;
+  const dow = sql<number>`extract(isodow from (${publishTs})::timestamptz at time zone ${tzLiteral(tz)})`;
   const rows = await db
     .select({ weekday: dow, n: sql<number>`count(*)`, avgScore: sql<number>`avg(${score})` })
     .from(posts)
@@ -745,7 +758,7 @@ export async function getSubscriberTrend(
     .where(gte(subscriberEvents.occurredAt, cutoff))
     .groupBy(subscriberEvents.channel);
 
-  const weekExpr = sql<string>`to_char(date_trunc('week', (${subscriberEvents.occurredAt})::timestamptz at time zone ${tz}), 'YYYY-MM-DD')`;
+  const weekExpr = sql<string>`to_char(date_trunc('week', (${subscriberEvents.occurredAt})::timestamptz at time zone ${tzLiteral(tz)}), 'YYYY-MM-DD')`;
   const weeklyRows = await db
     .select({ weekStart: weekExpr, count: sql<number>`sum(${subscriberEvents.count})` })
     .from(subscriberEvents)
