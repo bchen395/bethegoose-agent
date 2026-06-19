@@ -128,7 +128,10 @@ hr {
 
 .topbar {
   border-bottom: 1px solid var(--border);
-  background: var(--card);
+  /* Translucent + blurred so page content faintly shows through on scroll. */
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  backdrop-filter: saturate(150%) blur(12px);
+  -webkit-backdrop-filter: saturate(150%) blur(12px);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -137,43 +140,143 @@ hr {
 .topbar-inner {
   max-width: 920px;
   margin: 0 auto;
-  padding: 10px 20px;
+  height: 58px;
+  padding: 0 20px;
   display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  align-items: center; /* brand + user cluster center; nav stretches full height */
+  gap: 22px;
 }
 
+/* --- Brand mark --- */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.06rem;
+  letter-spacing: -0.012em;
+  white-space: nowrap;
+  transition: color var(--t-fast);
+}
+
+.brand:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.brand-mark {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.brand:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--ring);
+}
+
+/* --- Primary tabs --- */
 .nav {
   display: flex;
-  gap: 14px;
+  align-self: stretch; /* fill the bar height so underlines share one baseline */
+  align-items: stretch;
+  gap: 2px;
   flex: 1;
-  flex-wrap: wrap;
+  min-width: 0;
+  overflow-x: auto; /* scroll, never wrap, on narrow screens */
+  scrollbar-width: none; /* Firefox */
+}
+
+.nav::-webkit-scrollbar {
+  display: none; /* WebKit */
 }
 
 .nav a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  white-space: nowrap;
   text-decoration: none;
-  color: var(--fg);
-  padding: 4px 2px;
-  border-bottom: 2px solid transparent;
-  transition: color var(--t-fast), border-color var(--t-fast);
+  transition: color var(--t-fast);
+}
+
+/* Fixed-size icon box keeps every label on the same horizontal plane,
+   regardless of how each emoji's glyph metrics differ. */
+.nav-ico {
+  flex-shrink: 0;
+  width: 1.15em;
+  font-size: 1rem;
+  line-height: 1;
+  text-align: center;
+}
+
+/* The active/hover indicator is pinned to the bottom edge of the bar,
+   so it reads as one continuous tab rail. */
+.nav a::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+  transition: background var(--t-fast);
 }
 
 .nav a:hover {
-  color: var(--accent);
-  border-bottom-color: var(--border);
+  color: var(--fg);
   text-decoration: none;
 }
 
+.nav a:hover::after {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
 .nav a.active {
-  border-bottom-color: var(--accent);
   color: var(--accent);
+}
+
+.nav a.active::after {
+  background: var(--accent);
 }
 
 .nav a:focus-visible {
   outline: none;
-  border-radius: 4px;
-  box-shadow: var(--ring);
+  border-radius: var(--radius-sm);
+  /* inset ring won't be clipped by the nav's horizontal scroll container */
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* --- User cluster (right side) --- */
+.topbar-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.topbar-email {
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+@media (max-width: 660px) {
+  .topbar-email {
+    display: none; /* reclaim space for tabs on small screens */
+  }
 }
 
 /* --- Banners -------------------------------------------------------------- */

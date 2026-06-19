@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
@@ -32,10 +33,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <>
       <header className="topbar">
         <div className="topbar-inner">
-          <strong>🎨 Be The Goose</strong>
+          <Link href="/calendar" className="brand">
+            <span className="brand-mark" aria-hidden="true">
+              🎨
+            </span>
+            <span className="brand-name">Be The Goose</span>
+          </Link>
           <NavLinks />
-          <span className="muted text-xs">{user.email}</span>
-          <SignOutButton />
+          <div className="topbar-user">
+            <span className="topbar-email" title={user.email}>
+              {user.email}
+            </span>
+            <SignOutButton />
+          </div>
         </div>
       </header>
 
