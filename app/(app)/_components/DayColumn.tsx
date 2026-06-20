@@ -1,59 +1,44 @@
 "use client";
 
-import { useDroppable } from "@dnd-kit/core";
+import SlotCard from "./SlotCard";
+import type { DayMeta, SlotData } from "./calendar-types";
 
-import DraggableSlot from "./DraggableSlot";
-import type { DayMeta, SlotCardData } from "./calendar-types";
-
-/** One droppable day of the week, holding its scheduled slots. */
+/** One day of the week: its scheduled cards plus a tap-to-add affordance. */
 export default function DayColumn({
   day,
   slots,
-  days,
+  onEdit,
+  onAdd,
   onToggleDone,
-  onUnschedule,
-  onMove,
 }: {
   day: DayMeta;
-  slots: SlotCardData[];
-  days: DayMeta[];
+  slots: SlotData[];
+  onEdit: (slot: SlotData) => void;
+  onAdd: (dayIso: string) => void;
   onToggleDone: (id: number, done: boolean) => void;
-  onUnschedule: (id: number) => void;
-  onMove: (id: number, dayIso: string) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `day:${day.iso}` });
-
   const className = [
     "cal-day",
     day.isToday && "cal-day-today",
     day.isPast && "cal-day-past",
     slots.length === 0 && "cal-day-empty",
-    isOver && "drop-over",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <div ref={setNodeRef} className={className}>
+    <div className={className}>
       <div className="cal-day-head">
         <span className="cal-day-name">{day.name}</span>
         <span className="cal-day-date tabular">{day.dateLabel}</span>
         {day.isToday && <span className="chip chip-must cal-today-tag">today</span>}
       </div>
-      {slots.length === 0 ? (
-        <div className="cal-rest">— drop a post here</div>
-      ) : (
-        slots.map((s) => (
-          <DraggableSlot
-            key={s.id}
-            slot={s}
-            days={days}
-            onToggleDone={onToggleDone}
-            onUnschedule={onUnschedule}
-            onMove={onMove}
-          />
-        ))
-      )}
+      {slots.map((s) => (
+        <SlotCard key={`${s.kind}-${s.id}`} slot={s} onEdit={onEdit} onToggleDone={onToggleDone} />
+      ))}
+      <button type="button" className="cal-add" onClick={() => onAdd(day.iso)}>
+        ＋ add
+      </button>
     </div>
   );
 }
