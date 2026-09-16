@@ -3,6 +3,12 @@
 .env*.local
 data/
 
+# Local-only agent/editor config
+.claude/settings.local.json
+
+# One-off operator scripts (read .env.local, echo live tokens) — keep untracked
+scripts/seed-instagram-token.mjs
+
 # Node / Next.js
 node_modules/
 .next/
