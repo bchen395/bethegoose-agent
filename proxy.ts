@@ -4,16 +4,17 @@
  * allow-listed accounts can trigger API spend). Guards /api/* agent routes too.
  * The cron route is exempt: it authenticates with CRON_SECRET.
  *
+ * This is the FIRST gate, not the only one: every server action and agent route
+ * re-checks with requireUser() (lib/supabase/server.ts), so a matcher mistake
+ * here can never leave a mutation or a paid agent run unauthenticated.
+ *
  * (Next 16 renamed the `middleware` file convention to `proxy`.)
  */
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS ?? "")
-  .split(",")
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
+import { isAllowedEmail } from "@/lib/auth";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -49,8 +50,7 @@ export async function proxy(request: NextRequest) {
   const isPublic =
     path.startsWith("/login") || path.startsWith("/auth") || path.startsWith("/api/cron");
 
-  const email = (user?.email ?? "").toLowerCase();
-  const isAllowed = !!user && (ALLOWED_EMAILS.length === 0 || ALLOWED_EMAILS.includes(email));
+  const isAllowed = !!user && isAllowedEmail(user.email);
 
   if (!isAllowed && !isPublic) {
     const url = request.nextUrl.clone();

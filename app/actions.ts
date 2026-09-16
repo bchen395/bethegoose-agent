@@ -6,7 +6,9 @@
  * go through RSC; these are the writes. The long agent trigger (Strategy) is a
  * route handler instead, so it can set maxDuration.
  *
- * All actions run behind the auth middleware (it matches server-action POSTs).
+ * AUTH: every mutating action calls requireUser() first. The proxy already gates
+ * server-action POSTs, but that is a single path-matcher gate — these re-check so
+ * a matcher change can never expose a write. signOut() needs no guard.
  */
 
 import { DateTime } from "luxon";
@@ -35,7 +37,7 @@ import {
   updateSettings,
 } from "@/lib/db";
 import { defaultWeekTemplate } from "@/lib/calendar/template";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, requireUser } from "@/lib/supabase/server";
 import {
   CTA_OPTIONS,
   FORMATS,
@@ -62,6 +64,7 @@ export async function saveNumbers(
     shares: number | null;
   },
 ): Promise<void> {
+  await requireUser();
   // saves + reach are the only required fields (FEATURES.md §3).
   const reach = cleanCount(metrics.reach);
   const saves = cleanCount(metrics.saves);
@@ -85,6 +88,7 @@ export async function saveNumbers(
  * CTA-rotation cues. Validates against the schema CHECK before writing.
  */
 export async function setPostCta(postId: number, ctaType: string): Promise<void> {
+  await requireUser();
   if (!CTA_OPTIONS.includes(ctaType)) throw new Error("Pick a valid CTA type.");
   await updatePost(postId, { ctaType });
   revalidatePath("/engagement");
@@ -98,6 +102,7 @@ export async function logSubscriberEvent(input: {
   sourcePostId?: number | null;
   note?: string | null;
 }): Promise<void> {
+  await requireUser();
   const channel = input.channel === "snail_mail" || input.channel === "email" ? input.channel : null;
   if (!channel) throw new Error("Channel must be 'snail_mail' or 'email'.");
   const count = cleanCount(input.count);
@@ -144,11 +149,13 @@ function cleanProduct(data: ProductInput) {
 }
 
 export async function createProduct(data: ProductInput): Promise<void> {
+  await requireUser();
   await insertProduct(cleanProduct(data));
   revalidatePath("/products");
 }
 
 export async function updateProductAction(productId: number, data: ProductInput): Promise<void> {
+  await requireUser();
   await updateProduct(productId, cleanProduct(data));
   revalidatePath("/products");
 }
@@ -178,16 +185,19 @@ function cleanMarket(data: MarketInput) {
 }
 
 export async function createMarket(data: MarketInput): Promise<void> {
+  await requireUser();
   await insertMarket(cleanMarket(data));
   revalidatePath("/markets");
 }
 
 export async function updateMarketAction(marketId: number, data: MarketInput): Promise<void> {
+  await requireUser();
   await updateMarket(marketId, cleanMarket(data));
   revalidatePath("/markets");
 }
 
 export async function deleteMarketAction(marketId: number): Promise<void> {
+  await requireUser();
   await deleteMarket(marketId);
   revalidatePath("/markets");
 }
@@ -203,6 +213,7 @@ export async function saveSettings(data: {
   monthlyBudgetUsd: string;
   shopUrl: string;
 }): Promise<void> {
+  await requireUser();
   const timezone = data.timezone.trim();
   if (!timezone) throw new Error("Timezone is required.");
   const defaultPostTime = data.defaultPostTime.trim();
@@ -253,6 +264,7 @@ export async function saveBrandVoice(data: {
   avoidPhrasesText: string;
   snailMailPitch: string;
 }): Promise<void> {
+  await requireUser();
   await updateBrandVoice({
     artistName: data.artistName.trim() || null,
     toneDescription: data.toneDescription.trim() || null,
@@ -308,6 +320,7 @@ function cleanSlotFields(f: SlotFields) {
 
 /** Seed an empty week from the deterministic default layout (un-pinned). */
 export async function seedDefaultWeek(weekStart: string): Promise<void> {
+  await requireUser();
   if (!ISO_DATE.test(weekStart)) throw new Error("Invalid week.");
   const existing = await getCalendarWeek(weekStart);
   if (existing.length > 0) return; // never duplicate an already-populated week
@@ -321,6 +334,7 @@ export async function seedDefaultWeek(weekStart: string): Promise<void> {
 
 /** Add a brand-new card: onto a day (a calendar slot) or to the unscheduled box (an idea). */
 export async function addPost(fields: SlotFields): Promise<void> {
+  await requireUser();
   const c = cleanSlotFields(fields);
   if (fields.slotDate == null) {
     if (!c.theme) throw new Error("Give your idea a short title.");
@@ -344,6 +358,7 @@ export async function addPost(fields: SlotFields): Promise<void> {
 
 /** Edit a scheduled slot in place — text/format/time/priority and/or move to another day. */
 export async function saveSlot(slotId: number, fields: SlotFields): Promise<void> {
+  await requireUser();
   if (fields.slotDate == null || !ISO_DATE.test(fields.slotDate)) throw new Error("Invalid day.");
   const c = cleanSlotFields(fields);
   await updateCalendarSlot(slotId, {
@@ -361,6 +376,7 @@ export async function saveSlot(slotId: number, fields: SlotFields): Promise<void
 
 /** Edit an unscheduled idea in place (stays in the box). */
 export async function saveIdea(ideaId: number, fields: SlotFields): Promise<void> {
+  await requireUser();
   const c = cleanSlotFields(fields);
   if (!c.theme) throw new Error("Give your idea a short title.");
   await updateIdea(ideaId, { title: c.theme, format: c.format, contentIdea: c.contentIdea });
@@ -369,6 +385,7 @@ export async function saveIdea(ideaId: number, fields: SlotFields): Promise<void
 
 /** Move an unscheduled idea onto a day. The idea leaves the box (archived). */
 export async function scheduleSlot(ideaId: number, fields: SlotFields): Promise<void> {
+  await requireUser();
   if (fields.slotDate == null || !ISO_DATE.test(fields.slotDate)) throw new Error("Invalid day.");
   const c = cleanSlotFields(fields);
   const settings = await getSettings();
@@ -389,6 +406,7 @@ export async function scheduleSlot(ideaId: number, fields: SlotFields): Promise<
 
 /** Move a scheduled slot back to the unscheduled box. The slot leaves the calendar. */
 export async function unscheduleSlot(slotId: number, fields: SlotFields): Promise<void> {
+  await requireUser();
   const c = cleanSlotFields(fields);
   const title = c.theme ?? "Untitled idea";
   const slot = await getCalendarSlot(slotId);
@@ -409,18 +427,21 @@ export async function unscheduleSlot(slotId: number, fields: SlotFields): Promis
 
 /** Permanently remove a scheduled slot (the editor's Delete). */
 export async function deleteSlot(slotId: number): Promise<void> {
+  await requireUser();
   await deleteCalendarSlot(slotId);
   revalidatePath("/calendar");
 }
 
 /** Remove an unscheduled idea (soft-delete; some slots may still reference it). */
 export async function deleteIdea(ideaId: number): Promise<void> {
+  await requireUser();
   await archiveIdea(ideaId);
   revalidatePath("/calendar");
 }
 
 /** Toggle the lightweight "done" planning check on a slot. */
 export async function setSlotDone(slotId: number, done: boolean): Promise<void> {
+  await requireUser();
   await updateCalendarSlot(slotId, { done: Boolean(done), pinned: true });
   revalidatePath("/calendar");
 }

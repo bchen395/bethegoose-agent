@@ -102,7 +102,8 @@ on its allow-list.** In the Supabase dashboard → *Authentication → URL Confi
   (add the `*.vercel.app` preview pattern too only if you enabled preview env vars).
 
 Also confirm **email signups are disabled** / the allow-list (`ALLOWED_EMAILS`) is the gate
-— only allow-listed emails (`bchen395@gmail.com` today) can sign in.
+— only allow-listed emails can sign in. `ALLOWED_EMAILS` is **required**: `lib/auth.ts`
+fails closed, so an unset or empty list denies everyone rather than letting anyone in.
 
 ---
 

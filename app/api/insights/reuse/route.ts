@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { AgentError, CONTENT_MODEL, callJson } from "@/lib/claude";
 import { getActiveProducts, getBrandVoice, getTopPosts } from "@/lib/db";
+import { requireUser } from "@/lib/supabase/server";
 
 export const maxDuration = 120;
 
@@ -65,6 +66,13 @@ about them worked.
 }
 
 export async function POST() {
+  // Defense in depth: one Haiku call per click is still spend on an open button.
+  try {
+    await requireUser();
+  } catch {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const [top, brandVoice, products] = await Promise.all([
       getTopPosts(REUSE_WINDOW_DAYS, TOP_N),
